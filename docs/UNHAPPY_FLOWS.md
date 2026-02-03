@@ -151,16 +151,33 @@ Rejection occurs → pacs.002 RJCT flows backward
 
 | Category | Status | Implementation |
 |----------|--------|----------------|
-| RJCT with reason codes | ✅ Implemented | Gateway validation |
-| BE23 (Proxy not found) | ✅ Implemented | PDO simulator |
-| AB04 (Quote expired) | ✅ Implemented | Quote expiry check |
+| RJCT with reason codes | ✅ Implemented | Gateway validation (iso20022.py) |
+| BE23 (Proxy not found) | ✅ Implemented | PDO simulator returns BE23 code |
+| AB04 (Quote expired) | ✅ Implemented | Quote expiry check in gateway |
+| AM02 (Amount limit) | ✅ Implemented | Amounts > 50K trigger AM02 |
 | AM04 (Insufficient funds) | ⚠️ Partial | Mock SAP balances |
-| AC04 (Closed account) | ⚠️ Partial | Trigger values only |
+| AC04 (Closed account) | ✅ Implemented | Trigger value: +60999999999 |
+| RR04 (Regulatory block) | ✅ Implemented | Trigger value: +62999999999 |
+| RC11 (Invalid SAP) | ✅ Implemented | SAP mismatch in validation |
+| DUPL (Duplicate) | ✅ Implemented | Duplicate UETR check |
 | Returns via pacs.008 | ❌ Not implemented | Future work |
 | Recall via Service Desk | ❌ Not implemented | Future work |
 | camt.056 automation | ❌ Not implemented | Per spec |
 | pacs.004 returns | ❌ Not implemented | Per spec |
 | Disputes portal | ❌ Not implemented | Future work |
+
+## 5. Test Trigger Values
+
+Use these values in the sandbox to trigger specific error scenarios:
+
+| Proxy Value | Error Code | Description |
+|-------------|------------|-------------|
+| `+66999999999` | BE23 | Account/Proxy Invalid |
+| `+60999999999` | AC04 | Account Closed |
+| `+62999999999` | RR04 | Regulatory/AML Block |
+| Amount > 50,000 | AM02 | IPS Limit Exceeded |
+| Reuse UETR | DUPL | Duplicate Payment |
+| Wait 10 min after quote | AB04 | Quote Expired |
 
 ---
 

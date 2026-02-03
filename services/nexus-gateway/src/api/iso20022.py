@@ -648,6 +648,26 @@ async def validate_pacs008(parsed: dict, db: AsyncSession) -> PaymentValidationR
     if parsed.get("chargeBearer") and parsed["chargeBearer"] != "SHAR":
         errors.append("Charge Bearer must be SHAR (Shared) for Nexus payments")
     
+    # 4. Amount limit check (sandbox trigger: amounts > 50,000)
+    # Reference: docs/UNHAPPY_FLOWS.md - AM02 trigger
+    if parsed.get("settlementAmount"):
+        try:
+            amount = Decimal(str(parsed["settlementAmount"]))
+            if amount > Decimal("50000"):
+                errors.append(f"Amount {amount} exceeds IPS transaction limit (50,000)")
+                status_reason = STATUS_AMOUNT_LIMIT
+        except:
+            pass
+    
+    # 5. Duplicate UETR check
+    if uetr:
+        dup_query = text("SELECT COUNT(*) FROM payments WHERE uetr = :uetr AND status != 'RJCT'")
+        dup_result = await db.execute(dup_query, {"uetr": uetr})
+        dup_count = dup_result.scalar()
+        if dup_count and dup_count > 0:
+            errors.append(f"Duplicate UETR: {uetr} already exists")
+            status_reason = "DUPL"  # ISO 20022 Duplicate Payment
+    
     return PaymentValidationResult(
         valid=len(errors) == 0,
         uetr=uetr,

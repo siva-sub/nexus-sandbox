@@ -110,12 +110,37 @@ app.post('/resolve', (req, res) => {
 
     const registration = proxyDatabase.get(key);
 
+    // Trigger values for unhappy flow testing
+    // Reference: docs/UNHAPPY_FLOWS.md
+    const triggerValues = {
+        '+66999999999': { error: 'BE23', message: 'Account/Proxy Invalid - Not registered in PDO' },
+        '+60999999999': { error: 'AC04', message: 'Account Closed' },
+        '+62999999999': { error: 'RR04', message: 'Regulatory/AML Block' },
+    };
+
+    // Check for trigger values first
+    if (triggerValues[proxyValue]) {
+        const trigger = triggerValues[proxyValue];
+        logger.warn({ key, trigger }, 'Trigger value detected - returning error');
+        return res.status(422).json({
+            resolved: false,
+            error: trigger.error,
+            statusReasonCode: trigger.error,  // ISO 20022 ExternalStatusReason1Code
+            message: trigger.message,
+            proxyType,
+            proxyValue,
+        });
+    }
+
     if (!registration) {
         logger.warn({ key }, 'Proxy not found');
         return res.status(404).json({
             resolved: false,
-            error: 'PROXY_NOT_FOUND',
+            error: 'BE23',  // ISO 20022: Account/Proxy Invalid
+            statusReasonCode: 'BE23',
             message: `No account registered for ${proxyType}:${proxyValue}`,
+            proxyType,
+            proxyValue,
         });
     }
 

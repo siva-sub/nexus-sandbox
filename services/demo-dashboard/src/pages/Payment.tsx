@@ -214,6 +214,7 @@ export function PaymentPage() {
         }
 
         setLoading((prev) => ({ ...prev, resolve: true }));
+        setResolution(null);  // Clear previous resolution
         advanceStep(8);
 
         try {
@@ -229,8 +230,41 @@ export function PaymentPage() {
                 color: "green",
                 icon: <IconCheck size={16} />,
             });
-        } catch (e) {
-            notifications.show({ title: "Resolution Failed", message: "Could not resolve proxy", color: "red" });
+        } catch (e: any) {
+            // Mark step 8 as error state
+            setSteps((prev) =>
+                prev.map((s) => ({
+                    ...s,
+                    status: s.id === 8 ? "error" : s.status,
+                }))
+            );
+
+            // ISO 20022 Error Code mapping
+            const errorCodeDescriptions: Record<string, string> = {
+                'BE23': 'Account/Proxy Invalid - Not registered in destination country PDO',
+                'AC04': 'Account Closed - Recipient account has been closed',
+                'AC01': 'Incorrect Account Number - Invalid format',
+                'RR04': 'Regulatory Block - AML/CFT screening failed',
+                'AGNT': 'Incorrect Agent - PSP not onboarded to Nexus',
+            };
+
+            const statusCode = e.statusReasonCode || 'UNKNOWN';
+            const description = errorCodeDescriptions[statusCode] || e.detail || 'Could not resolve proxy';
+
+            // Set error resolution for display
+            setResolution({
+                verified: false,
+                error: statusCode,
+                errorMessage: description,
+            } as any);
+
+            notifications.show({
+                title: `Resolution Failed (${statusCode})`,
+                message: description,
+                color: "red",
+                icon: <IconAlertCircle size={16} />,
+                autoClose: 8000,
+            });
         } finally {
             setLoading((prev) => ({ ...prev, resolve: false }));
         }
@@ -526,7 +560,8 @@ export function PaymentPage() {
                                     />
                                 ))}
 
-                                {resolution && (
+
+                                {resolution && resolution.verified && (
                                     <Alert color="green" title="Recipient Verified" icon={<IconCheck size={16} />} p="xs">
                                         <Stack gap={4}>
                                             <Text size="xs" fw={700}>Name: {resolution.beneficiaryName || resolution.accountName}</Text>
@@ -535,11 +570,21 @@ export function PaymentPage() {
                                         </Stack>
                                     </Alert>
                                 )}
+
+                                {resolution && !resolution.verified && (
+                                    <Alert color="red" title={`Resolution Failed (${(resolution as any).error})`} icon={<IconAlertCircle size={16} />} p="xs">
+                                        <Stack gap={4}>
+                                            <Text size="xs" fw={700}>Error Code: {(resolution as any).error}</Text>
+                                            <Text size="xs">{(resolution as any).errorMessage}</Text>
+                                            <Text size="xs" c="dimmed">Reference: ISO 20022 ExternalStatusReason1Code</Text>
+                                        </Stack>
+                                    </Alert>
+                                )}
                                 <Button
                                     fullWidth
                                     leftSection={<IconSend size={16} />}
                                     loading={loading.submit}
-                                    disabled={!selectedQuote || !resolution}
+                                    disabled={!selectedQuote || !resolution || !resolution.verified}
                                     onClick={handleSubmit}
                                 >
                                     Confirm & Send

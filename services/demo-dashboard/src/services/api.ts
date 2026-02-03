@@ -13,11 +13,24 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
     });
 
     if (!response.ok) {
-        throw new Error(`API Error: ${response.status} ${response.statusText}`);
+        // Try to parse error body for structured error info
+        let errorBody = null;
+        try {
+            errorBody = await response.json();
+        } catch {
+            // Ignore JSON parse errors
+        }
+        const error = new Error(`API Error: ${response.status} ${response.statusText}`) as any;
+        error.status = response.status;
+        error.statusReasonCode = errorBody?.statusReasonCode || errorBody?.error;
+        error.detail = errorBody?.message || errorBody?.detail;
+        error.errorBody = errorBody;
+        throw error;
     }
 
     return response.json();
 }
+
 
 // Countries API
 export async function getCountries() {
