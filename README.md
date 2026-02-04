@@ -25,20 +25,34 @@ Based on the official [Nexus Global Payments documentation](https://docs.nexusgl
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start (3 Steps)
 
-### Option A: Full Stack (12 services, ~2 min startup)
+### Prerequisites
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
+
+### Step 1: Clone the Repository
 ```bash
-docker compose up -d
+git clone https://github.com/siva-sub/nexus-sandbox.git
+cd nexus-sandbox
 ```
 
-### Option B: Lite Profile (4 services, ~20 sec startup)
+### Step 2: Start the Sandbox
 ```bash
-# Fastest way to see the demo - no Kafka, just essentials
+# Recommended: Lite profile - starts in ~20 seconds
 docker compose -f docker-compose.lite.yml up -d
+
+# Alternative: Full stack with Kafka & all simulators (~2 min)
+# docker compose up -d
 ```
 
-**Access the demo:** http://localhost:8080 → Click **"Quick Demo"** button for instant payment flow!
+### Step 3: Open the Demo
+```
+🌐 http://localhost:8080
+```
+
+**That's it!** Click **"Send Payment"** in the sidebar to start your first cross-border payment.
+
+![Dashboard Screenshot](./docs/screenshots/mesh.png)
 
 ### 📖 Documentation Links
 - [**Usage Guide**](./docs/USAGE_GUIDE.md): Start here to simulate your first payment.
