@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Skill(using-superpowers)",
-      "Bash(done:*)",
-      "Bash(head:*)"
-    ]
-  }
-}
