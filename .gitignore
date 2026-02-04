@@ -91,3 +91,6 @@ secrets/
 site/
 # Large files (>100MB)
 *.iso20022
+
+# Large documentation dumps
+docs.nexusglobalpayments.org_documentation.md
