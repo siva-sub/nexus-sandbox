@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nexus Sandbox - Page Not Found</title>
+    <script>
+        // Single Page App redirect for GitHub Pages
+        // Redirects 404s back to index with the path stored in sessionStorage
+        const path = window.location.pathname;
+        sessionStorage.setItem('redirect', path);
+        window.location.replace('/nexus-sandbox/');
+    </script>
+</head>
+
+<body>
+    <p>Redirecting...</p>
+</body>
+
+</html>
