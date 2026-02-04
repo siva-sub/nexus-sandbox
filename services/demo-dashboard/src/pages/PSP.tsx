@@ -182,7 +182,7 @@ export function PSPPage() {
                                     <Stack gap="sm">
                                         <Group justify="space-between">
                                             <Text c="dimmed">BIC</Text>
-                                            <Code>{selectedPSPData.bic}</Code>
+                                            <Code>{selectedPSPData.bic || "N/A"}</Code>
                                         </Group>
                                         <Group justify="space-between">
                                             <Text c="dimmed">Name</Text>
@@ -194,11 +194,11 @@ export function PSPPage() {
                                         </Group>
                                         <Group justify="space-between">
                                             <Text c="dimmed">Fee</Text>
-                                            <Text>{(selectedPSPData.fee_percent * 100).toFixed(2)}%</Text>
+                                            <Text>{((selectedPSPData.fee_percent || 0) * 100).toFixed(2)}%</Text>
                                         </Group>
                                     </Stack>
                                 ) : (
-                                    <Text c="dimmed">Select a PSP to view details</Text>
+                                    <Text c="dimmed">Select a PSP above to view responsibilities and technical details</Text>
                                 )}
                             </Card>
                         </SimpleGrid>

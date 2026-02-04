@@ -227,8 +227,8 @@ export async function submitPacs008(params: Pacs008Params): Promise<Pacs008Respo
     if (MOCK_ENABLED) {
         return {
             uetr: params.uetr,
-            status: "ACSP",
-            message: "Payment accepted for processing (Mock)",
+            status: "ACCC",
+            message: "Payment completed successfully (Mock)",
             callbackEndpoint: "https://mock-callback.example.com",
             processedAt: new Date().toISOString()
         };

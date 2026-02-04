@@ -41,7 +41,6 @@ import {
     Timeline,
     Divider,
     Table,
-    Modal,
     ScrollArea,
 } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
@@ -149,10 +148,10 @@ export function InteractiveDemo() {
                 destinationCurrency: "IDR",
                 debtorName: "Quick Demo Sender",
                 debtorAccount: "SG1234567890",
-                debtorAgentBic: "DBSSSGSGXXX",
+                debtorAgentBic: "DBSGSGSG",
                 creditorName: "Budi Santoso",
                 creditorAccount: "+6281234567890",
-                creditorAgentBic: "BMRIIDJA",
+                creditorAgentBic: "BKKBTHBK",
             };
 
             const response = await submitPacs008(pacs008Params);
@@ -286,10 +285,10 @@ export function InteractiveDemo() {
                 destinationCurrency: destCurrency,
                 debtorName: "Demo Sender",
                 debtorAccount: "SG1234567890",
-                debtorAgentBic: "DBSSSGSGXXX", // DBS Singapore (example)
+                debtorAgentBic: "DBSGSGSG", // DBS Singapore
                 creditorName: resolution.recipientName || "Demo Recipient",
                 creditorAccount: proxyValue,
-                creditorAgentBic: resolution.recipientPsp || "BABORIDJ", // BCA Indonesia (example)
+                creditorAgentBic: resolution.recipientPsp || "BKKBTHBK", // Bangkok Bank (example)
                 scenarioCode: scenario !== "happy" ? scenario : undefined,
             };
 
@@ -621,17 +620,25 @@ export function InteractiveDemo() {
                                 </Card>
                             )}
 
-                            {/* XML Preview Modal */}
+                            {/* Embedded XML Preview */}
                             {selectedQuote && ptd && (
-                                <Modal
-                                    opened={false}
-                                    onClose={() => { }}
-                                    title="pacs.008 Message Preview"
-                                    size="xl"
-                                >
-                                    <ScrollArea h={400}>
-                                        <Code block style={{ whiteSpace: "pre", fontSize: "0.75rem" }}>
-                                            {`<?xml version="1.0" encoding="UTF-8"?>
+                                <Card withBorder bg="var(--mantine-color-dark-8)" p="md">
+                                    <Group justify="space-between" mb="xs">
+                                        <Group gap="xs">
+                                            <IconCode size={18} color="var(--mantine-color-blue-4)" />
+                                            <Text fw={600} size="sm">ISO 20022 pacs.008 Message</Text>
+                                        </Group>
+                                        <Badge variant="outline" size="xs">Step 10: Initiation</Badge>
+                                    </Group>
+
+                                    <Text size="xs" c="dimmed" mb="md">
+                                        The Source PSP constructs this XML message to initiate the cross-border payment via Nexus.
+                                    </Text>
+
+                                    <Box style={{ position: 'relative' }}>
+                                        <ScrollArea h={300} type="always" offsetScrollbars>
+                                            <Code block style={{ whiteSpace: "pre", fontSize: "0.7rem", backgroundColor: 'transparent' }}>
+                                                {`<?xml version="1.0" encoding="UTF-8"?>
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.10">
   <FIToFICstmrCdtTrf>
     <GrpHdr>
@@ -650,8 +657,8 @@ export function InteractiveDemo() {
       <XchgRate>${selectedQuote.exchangeRate}</XchgRate>
       <Dbtr><Nm>Demo Sender</Nm></Dbtr>
       <DbtrAcct><Id><Othr><Id>SG1234567890</Id></Othr></Id></DbtrAcct>
-      <DbtrAgt><FinInstnId><BICFI>DBSSSGSGXXX</BICFI></FinInstnId></DbtrAgt>
-      <CdtrAgt><FinInstnId><BICFI>${resolution?.recipientPsp || "BMRIIDJA"}</BICFI></FinInstnId></CdtrAgt>
+      <DbtrAgt><FinInstnId><BICFI>DBSGSGSG</BICFI></FinInstnId></DbtrAgt>
+      <CdtrAgt><FinInstnId><BICFI>${resolution?.recipientPsp || "BKKBTHBK"}</BICFI></FinInstnId></CdtrAgt>
       <Cdtr><Nm>${resolution?.recipientName || "Demo Recipient"}</Nm></Cdtr>
       <CdtrAcct><Id><Othr><Id>${proxyValue}</Id></Othr></Id></CdtrAcct>
       <SplmtryData>
@@ -660,30 +667,17 @@ export function InteractiveDemo() {
     </CdtTrfTxInf>
   </FIToFICstmrCdtTrf>
 </Document>`}
-                                        </Code>
-                                    </ScrollArea>
-                                </Modal>
+                                            </Code>
+                                        </ScrollArea>
+                                    </Box>
+                                </Card>
                             )}
 
                             <Group>
                                 <Button
                                     size="lg"
-                                    variant="light"
-                                    color="gray"
-                                    leftSection={<IconCode size={20} />}
-                                    onClick={() => {
-                                        notifications.show({
-                                            title: "pacs.008 Preview",
-                                            message: `Quote ID: ${selectedQuote?.quoteId} | Rate: ${selectedQuote?.exchangeRate} | Amount: ${ptd?.senderPrincipal} ${ptd?.sourceCurrency}`,
-                                            autoClose: 10000,
-                                        });
-                                    }}
-                                >
-                                    Preview XML
-                                </Button>
-                                <Button
-                                    size="lg"
                                     color="green"
+                                    flex={1}
                                     onClick={handleConfirmPayment}
                                     loading={loading}
                                     leftSection={<IconCheck size={20} />}
@@ -713,7 +707,7 @@ export function InteractiveDemo() {
                                         </Code>
                                         <Button
                                             component="a"
-                                            href={`/explorer?uetr=${paymentResult.uetr}`}
+                                            href={`#/explorer?uetr=${paymentResult.uetr}`}
                                             variant="light"
                                             size="xs"
                                             mt="sm"
@@ -763,7 +757,7 @@ export function InteractiveDemo() {
                                         </Code>
                                         <Button
                                             component="a"
-                                            href={`/explorer?uetr=${paymentResult.uetr}`}
+                                            href={`#/explorer?uetr=${paymentResult.uetr}`}
                                             variant="light"
                                             size="xs"
                                             mt="sm"
