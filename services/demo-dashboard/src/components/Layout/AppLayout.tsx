@@ -33,6 +33,7 @@ import {
 } from "@tabler/icons-react";
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { checkHealth } from "../../services/api";
+import { DemoBanner } from "../DemoBanner";
 
 interface NavItem {
     icon: typeof IconSend;
@@ -224,6 +225,7 @@ export function AppLayout() {
             </AppShell.Navbar>
 
             <AppShell.Main>
+                <DemoBanner />
                 <Outlet />
             </AppShell.Main>
         </AppShell>

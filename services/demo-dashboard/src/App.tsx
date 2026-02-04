@@ -4,10 +4,13 @@ import "@mantine/code-highlight/styles.css";
 
 import { MantineProvider } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { HashRouter, BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import { theme } from "./theme";
 import { AppLayout } from "./components/Layout/AppLayout";
+import { MOCK_ENABLED } from "./services/mockData";
+
+const Router = MOCK_ENABLED ? HashRouter : BrowserRouter;
 import { PaymentPage } from "./pages/Payment";
 import { PaymentDemo } from "./pages/PaymentDemo";
 import { FXPPage } from "./pages/FXP";
@@ -29,7 +32,7 @@ function App() {
   return (
     <MantineProvider theme={theme} defaultColorScheme="dark">
       <Notifications position="top-right" />
-      <BrowserRouter>
+      <Router>
         <Routes>
           <Route path="/" element={<AppLayout />}>
             <Route index element={<Navigate to="/payment" replace />} />
@@ -50,7 +53,7 @@ function App() {
             <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Routes>
-      </BrowserRouter>
+      </Router>
     </MantineProvider>
   );
 }

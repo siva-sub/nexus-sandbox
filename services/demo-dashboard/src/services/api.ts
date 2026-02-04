@@ -1,4 +1,5 @@
-// API Service for Nexus Gateway
+import * as mock from "./mockData";
+const { MOCK_ENABLED } = mock;
 
 const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 
@@ -39,6 +40,7 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
 
 // Countries API
 export async function getCountries() {
+    if (MOCK_ENABLED) return { countries: mock.mockCountries };
     return fetchJSON<{ countries: import("../types").Country[] }>("/v1/countries");
 }
 
@@ -49,6 +51,7 @@ export async function getQuotes(
     amount: number,
     amountType: "SOURCE" | "DESTINATION" = "SOURCE"
 ) {
+    if (MOCK_ENABLED) return { quotes: mock.mockQuotes };
     const params = new URLSearchParams({
         sourceCountry,
         destCountry,
@@ -62,6 +65,7 @@ export async function getQuotes(
 
 // Fee disclosure API
 export async function getPreTransactionDisclosure(quoteId: string) {
+    if (MOCK_ENABLED) return mock.mockQuotes[0].fees as any;
     return fetchJSON<import("../types").FeeBreakdown>(
         `/v1/pre-transaction-disclosure?quote_id=${quoteId}`
     );
@@ -69,6 +73,18 @@ export async function getPreTransactionDisclosure(quoteId: string) {
 
 // Address types and inputs API (Combined)
 export async function getAddressTypes(countryCode: string) {
+    if (MOCK_ENABLED) {
+        const pdo = mock.mockPDOs.find(p => p.country_code === countryCode);
+        return {
+            countryCode,
+            addressTypes: (pdo?.supported_proxy_types || []).map(type => ({
+                address_type_id: type,
+                name: type === "MBNO" ? "Mobile Number" : type,
+                description: `Resolve via ${type}`,
+                inputs: [{ field_id: "value", label: "Value", type: "text", required: true }]
+            }))
+        };
+    }
     return fetchJSON<{ countryCode: string; addressTypes: import("../types").AddressTypeWithInputs[] }>(
         `/v1/countries/${countryCode}/address-types-and-inputs`
     );
@@ -81,6 +97,18 @@ export async function resolveProxy(
     value: string,
     structuredData?: Record<string, string>
 ): Promise<import("../types").ProxyResolutionResult> {
+    if (MOCK_ENABLED) {
+        return {
+            resolutionId: "mock-res-123",
+            accountNumber: "1234567890",
+            accountType: "BBAN",
+            agentBic: country === "TH" ? "BKKBTHBK" : "MAYBMYKL",
+            beneficiaryName: "Mock Beneficiary",
+            displayName: "M. Beneficiary",
+            status: "VALIDATED",
+            timestamp: new Date().toISOString()
+        } as any;
+    }
     return fetchJSON<import("../types").ProxyResolutionResult>(
         "/v1/addressing/resolve",
         {
@@ -188,8 +216,18 @@ function buildPacs008Xml(params: Pacs008Params): string {
 </Document>`;
 }
 
-// Submit pacs.008 XML to the Nexus Gateway
+// Submit payment (pacs.008) - Requires ISO 20022 XML per Nexus specification
+// Reference: NotebookLM confirms JSON is NOT supported for pacs.008
 export async function submitPacs008(params: Pacs008Params): Promise<Pacs008Response> {
+    if (MOCK_ENABLED) {
+        return {
+            uetr: params.uetr,
+            status: "ACSP",
+            message: "Payment accepted for processing (Mock)",
+            callbackEndpoint: "https://mock-callback.example.com",
+            processedAt: new Date().toISOString()
+        };
+    }
     const xml = buildPacs008Xml(params);
     const callbackUrl = `${window.location.origin}/api/callback/pacs002`;
 
@@ -228,6 +266,7 @@ export async function submitPacs008(params: Pacs008Params): Promise<Pacs008Respo
 
 // FX Rates API
 export async function getRates(corridor?: string) {
+    if (MOCK_ENABLED) return { rates: mock.mockFXRates };
     const url = corridor ? `/v1/rates?corridor=${corridor}` : "/v1/rates";
     return fetchJSON<{ rates: import("../types").FXRate[] }>(url);
 }
@@ -246,6 +285,7 @@ export async function submitRate(rateData: {
 
 // Liquidity API
 export async function getLiquidityBalances() {
+    if (MOCK_ENABLED) return { balances: mock.mockLiquidityBalances };
     return fetchJSON<{ balances: import("../types").LiquidityBalance[] }>(
         "/v1/liquidity/balances"
     );
@@ -259,6 +299,7 @@ export async function getReservations() {
 
 // Health check
 export async function checkHealth() {
+    if (MOCK_ENABLED) return { status: "healthy", timestamp: new Date().toISOString() };
     return fetchJSON<{ status: string; timestamp: string }>("/health");
 }
 
@@ -347,6 +388,7 @@ export async function emvcoToUPI(emvcoData: string) {
 
 // Payments Explorer
 export async function listPayments(status?: string) {
+    if (MOCK_ENABLED) return { payments: mock.mockPayments };
     const url = status ? `/v1/payments?status=${status}` : "/v1/payments";
     return fetchJSON<{ payments: import("../types").Payment[] }>(url);
 }
@@ -361,6 +403,14 @@ export async function getPaymentEvents(uetr: string) {
  * Retrieves the settlement routing accounts for a selected FX quote.
  */
 export async function getIntermediaryAgents(quoteId: string): Promise<import("../types").IntermediaryAgentsResponse> {
+    if (MOCK_ENABLED) {
+        return {
+            quoteId,
+            sourceSap: { bic: "DBSSSGSG", name: "DBS Settlement", country: "SG" },
+            destinationSap: { bic: "BBLTHBK", name: "Bangkok Bank Settlement", country: "TH" },
+            routingPath: ["S-PSP", "S-IPS", "Nexus", "FXP", "SAP", "D-IPS", "D-PSP"]
+        } as any;
+    }
     return fetchJSON(`/v1/quotes/${quoteId}/intermediary-agents`);
 }
 
@@ -378,6 +428,10 @@ export interface PSP {
 }
 
 export async function getPSPs(countryCode?: string) {
+    if (MOCK_ENABLED) {
+        const filtered = countryCode ? mock.mockPSPs.filter(p => p.country_code === countryCode) : mock.mockPSPs;
+        return { psps: filtered, total: filtered.length };
+    }
     const url = countryCode ? `/v1/psps?country_code=${countryCode}` : "/v1/psps";
     return fetchJSON<{ psps: PSP[]; total: number }>(url);
 }
@@ -397,6 +451,10 @@ export interface IPSOperator {
 }
 
 export async function getIPSOperators(countryCode?: string) {
+    if (MOCK_ENABLED) {
+        const filtered = countryCode ? mock.mockIPSOperators.filter(p => p.country_code === countryCode) : mock.mockIPSOperators;
+        return { operators: filtered, total: filtered.length };
+    }
     const url = countryCode ? `/v1/ips?country_code=${countryCode}` : "/v1/ips";
     return fetchJSON<{ operators: IPSOperator[]; total: number }>(url);
 }
@@ -424,6 +482,10 @@ export interface ProxyRegistration {
 }
 
 export async function getPDOs(countryCode?: string) {
+    if (MOCK_ENABLED) {
+        const filtered = countryCode ? mock.mockPDOs.filter(p => p.country_code === countryCode) : mock.mockPDOs;
+        return { pdos: filtered, total: filtered.length };
+    }
     const url = countryCode ? `/v1/pdos?country_code=${countryCode}` : "/v1/pdos";
     return fetchJSON<{ pdos: PDO[]; total: number }>(url);
 }
