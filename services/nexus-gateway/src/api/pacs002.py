@@ -297,6 +297,25 @@ async def receive_pacs002_xml(
     # Step 1: XSD Schema Validation
     xsd_result = xsd_validation.validate_pacs002(xml_content)
     if not xsd_result.valid:
+        # Forensic Logging: Store violation in Message Observatory 
+        from .iso20022 import store_payment_event
+        from uuid import uuid4
+        
+        failed_uetr = xsd_validation.safe_extract_uetr(xml_content) or f"UNKNOWN-{uuid4().hex[:8]}"
+        
+        await store_payment_event(
+            db=db,
+            uetr=failed_uetr,
+            event_type="SCHEMA_VALIDATION_FAILED",
+            actor="NEXUS",
+            data={
+                "messageType": "pacs.002",
+                "errors": xsd_result.errors,
+                "summary": "Incoming pacs.002 failed XSD schema validation"
+            },
+            pacs002_xml=xml_content
+        )
+
         raise HTTPException(
             status_code=400,
             detail={

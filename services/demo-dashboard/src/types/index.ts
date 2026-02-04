@@ -58,22 +58,31 @@ export interface Quote {
 
 export interface FeeBreakdown {
     quoteId: string;
-    exchangeRate: string;
-    quoteValidUntil: string;
-    amountToDebit: string;
-    amountToDebitCurrency: string;
-    amountToCredit: string;
-    amountToCreditCurrency: string;
-    sourcePspFee: string;
-    sourcePspFeeCurrency: string;
+
+    // Rates (both in destination per source, e.g., IDR per SGD)
+    marketRate: string;
+    customerRate: string;
+    appliedSpreadBps: string;
+
+    // Destination side (recipient)
+    recipientNetAmount: string;    // What recipient ACTUALLY receives (NET)
+    payoutGrossAmount: string;     // Amount sent to dest PSP (before their fee)
+    destinationPspFee: string;     // Fee deducted by dest PSP
+    destinationCurrency: string;
+
+    // Source side (sender)
+    senderPrincipal: string;       // FX principal
+    sourcePspFee: string;          // Source PSP fee
     sourcePspFeeType: "INVOICED" | "DEDUCTED";
-    destinationPspFee: string;
-    destinationPspFeeCurrency: string;
-    fxSpreadBps: string;
-    nexusSchemeFee: string;
-    nexusSchemeFeeCurrency: string;
-    effectiveExchangeRate: string;
-    definedExchangeRate: string;
+    schemeFee: string;             // Nexus scheme fee
+    senderTotal: string;           // Total amount debited from sender
+    sourceCurrency: string;
+
+    // Disclosure metrics
+    effectiveRate: string;         // recipient_net / sender_total
+    totalCostPercent: string;      // Cost vs mid-market benchmark
+
+    quoteValidUntil: string;
 }
 
 export interface ProxyResolutionResult {
@@ -87,6 +96,8 @@ export interface ProxyResolutionResult {
     agentBic?: string;
     displayName?: string;
     verified: boolean;
+    error?: string;
+    errorMessage?: string;
     timestamp?: string;
 }
 
@@ -150,4 +161,52 @@ export interface IntermediaryAgentsResponse {
     quoteId: string;
     intermediaryAgent1: IntermediaryAgentAccount;
     intermediaryAgent2: IntermediaryAgentAccount;
+}
+
+export interface PaymentEvent {
+    eventId: string;
+    uetr: string;
+    eventType: string;
+    event_type?: string; // Backend sync
+    actor: string;
+    data: Record<string, unknown>;
+    timestamp: string;
+}
+
+export interface Payment {
+    uetr: string;
+    quoteId: string;
+    sourcePspBic: string;
+    destinationPspBic: string;
+    debtorName: string;
+    debtorAccount: string;
+    creditorName: string;
+    creditorAccount: string;
+    sourceCurrency: string;
+    destinationCurrency: string;
+    sourceAmount: number;
+    exchangeRate: string;
+    status: string;
+    createdAt: string;
+    initiated_at: string; // Backend sync
+}
+
+export interface AddressTypeInputDetails {
+    fieldName: string;
+    displayLabel: string;
+    dataType: string;
+    attributes: {
+        placeholder?: string;
+        pattern?: string;
+        required: boolean;
+    };
+}
+
+export interface AddressTypeWithInputs {
+    addressTypeId: string;
+    addressTypeName: string;
+    inputs: AddressTypeInputDetails[];
+    // For Select compatibility
+    value?: string;
+    label?: string;
 }

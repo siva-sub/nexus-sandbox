@@ -17,6 +17,9 @@ This directory contains Architecture Decision Records (ADRs) for the Nexus Globa
 | [ADR-009](ADR-009-sandbox-mock-data-strategy.md) | Sandbox Mock Data Strategy | Accepted | 2026-02-03 |
 | [ADR-010](ADR-010-payment-lifecycle-persistence.md) | Payment Lifecycle Persistence | Proposed | 2026-02-03 |
 | [ADR-011](ADR-011-developer-observability.md) | Developer Observability | Accepted | 2026-02-03 |
+| [ADR-012](ADR-012-quote-snapshot-architecture.md) | Quote Snapshot Architecture | Accepted | 2026-02-04 |
+| [ADR-013](ADR-013-e2e-demo-integration.md) | E2E Demo Integration | Accepted | 2026-02-04 |
+| [ADR-014](ADR-014-protocol-parity-interactive-demo.md) | Protocol Parity Interactive Demo | Accepted | 2026-02-04 |
 
 ## ADR Template
 

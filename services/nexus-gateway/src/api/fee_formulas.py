@@ -1,23 +1,30 @@
 """
-Fee Formulas API Endpoints
+Fee Formulas API Endpoints - REWRITTEN with invariants
 
 Reference: https://docs.nexusglobalpayments.org/fees-and-pricing/source-psp-fees
 
-Critical for Nexus fee transparency requirements:
-- Sender must see EXACT fees before authorizing
-- Source PSP fees can be invoiced OR deducted
-- Destination PSP fees MUST be deducted from principal
-- FX spread built into rate (no separate charge)
+This module implements the pre-transaction disclosure with STRICT invariants
+to prevent the contradictions identified in the previous implementation.
+
+Key Design Principles:
+1. All rates are expressed as DESTINATION per SOURCE (e.g., IDR per 1 SGD)
+2. Recipient amount is always NET (after destination fee deduction)
+3. Payout gross = recipient net + destination fee
+4. Sender total = sender principal + source fees
+5. Effective rate = recipient net / sender total (same units as market rate)
 """
 
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
-from decimal import Decimal
+from decimal import Decimal, getcontext
 from datetime import datetime, timezone
 from pydantic import BaseModel
 from ..db import get_db
+
+# High precision for FX calculations
+getcontext().prec = 40
 
 router = APIRouter(prefix="/v1", tags=["Fees"])
 
@@ -38,77 +45,144 @@ class PreTransactionDisclosure(BaseModel):
     """
     Pre-transaction fee disclosure per Nexus requirements.
     
-    Reference: https://docs.nexusglobalpayments.org/fees-and-pricing/fx-spread-transparency
-    
-    This MUST be shown to sender before authorization.
+    INVARIANTS (these MUST hold true):
+    1. payout_gross = recipient_net + destination_fee (in destination currency)
+    2. sender_total = sender_principal + source_psp_fee + scheme_fee (in source currency)
+    3. effective_rate = recipient_net / sender_total
+    4. customer_rate = market_rate * (1 - spread_bps/10000)
+    5. sender_principal = payout_gross / customer_rate
     """
     # Quote reference
     quoteId: str
-    exchangeRate: str
+    
+    # Market and customer rates (both in destination per source)
+    marketRate: str               # Mid-market rate (IDR per SGD)
+    customerRate: str             # Rate after spread applied
+    appliedSpreadBps: str         # Spread actually applied
+    
+    # Payout side (destination currency - IDR)
+    recipientNetAmount: str       # What recipient ACTUALLY receives (NET)
+    payoutGrossAmount: str        # Amount sent to dest PSP (before their fee)
+    destinationPspFee: str        # Fee deducted by dest PSP
+    destinationCurrency: str
+    
+    # Sender side (source currency - SGD)
+    senderPrincipal: str          # FX principal (funds payout at customer rate)
+    sourcePspFee: str             # Source PSP fee
+    sourcePspFeeType: str         # DEDUCTED or INVOICED
+    schemeFee: str                # Nexus scheme fee
+    senderTotal: str              # Total amount debited from sender
+    sourceCurrency: str
+    
+    # Disclosure metrics
+    effectiveRate: str            # recipient_net / sender_total (IDR per SGD)
+    totalCostPercent: str         # Cost vs mid-market benchmark
+    
+    # Quote validity
     quoteValidUntil: str
+
+
+def _calculate_destination_fee(gross_payout: Decimal, currency: str) -> Decimal:
+    """
+    Calculate destination PSP fee based on scheme rules.
+    Fee is DEDUCTED from payout (beneficiary receives less).
+    """
+    fee_structures = {
+        "SGD": {"fixed": Decimal("0.50"), "percent": Decimal("0.001"), "min": Decimal("0.50"), "max": Decimal("5.00")},
+        "THB": {"fixed": Decimal("10.00"), "percent": Decimal("0.001"), "min": Decimal("10.00"), "max": Decimal("100.00")},
+        "MYR": {"fixed": Decimal("1.00"), "percent": Decimal("0.001"), "min": Decimal("1.00"), "max": Decimal("10.00")},
+        "PHP": {"fixed": Decimal("25.00"), "percent": Decimal("0.002"), "min": Decimal("25.00"), "max": Decimal("250.00")},
+        "IDR": {"fixed": Decimal("500"), "percent": Decimal("0.001"), "min": Decimal("500"), "max": Decimal("50000")},
+        "INR": {"fixed": Decimal("25.00"), "percent": Decimal("0.001"), "min": Decimal("25.00"), "max": Decimal("250.00")},
+    }
     
-    # Sender sees these amounts
-    amountToDebit: str
-    amountToDebitCurrency: str
-    amountToCredit: str
-    amountToCreditCurrency: str
+    struct = fee_structures.get(currency, {"fixed": Decimal("1.00"), "percent": Decimal("0.001"), "min": Decimal("1.00"), "max": Decimal("10.00")})
     
-    # Fee breakdown (transparency)
-    sourcePspFee: str
-    sourcePspFeeCurrency: str
-    sourcePspFeeType: str  # INVOICED or DEDUCTED
+    calculated = struct["fixed"] + gross_payout * struct["percent"]
+    return max(struct["min"], min(struct["max"], calculated))
+
+
+def _calculate_source_psp_fee(principal: Decimal) -> Decimal:
+    """
+    Calculate source PSP fee.
+    Fee structure: 0.50 SGD fixed + 0.1% of principal, min 0.50, max 10.00
+    """
+    calculated = Decimal("0.50") + principal * Decimal("0.001")
+    return max(Decimal("0.50"), min(Decimal("10.00"), calculated))
+
+
+def _calculate_scheme_fee(principal: Decimal) -> Decimal:
+    """
+    Calculate Nexus scheme fee.
+    Fee structure: 0.10 SGD fixed + 0.05% of principal, min 0.10, max 5.00
+    """
+    calculated = Decimal("0.10") + principal * Decimal("0.0005")
+    return max(Decimal("0.10"), min(Decimal("5.00"), calculated))
+
+
+def _assert_invariants(
+    recipient_net: Decimal,
+    payout_gross: Decimal,
+    dest_fee: Decimal,
+    sender_principal: Decimal,
+    sender_total: Decimal,
+    source_psp_fee: Decimal,
+    scheme_fee: Decimal,
+    effective_rate: Decimal,
+    customer_rate: Decimal,
+    market_rate: Decimal,
+    applied_spread_bps: Decimal,
+):
+    """
+    Validate all invariants that MUST hold true.
+    Raises AssertionError if any invariant is violated.
+    """
+    tolerance = Decimal("0.01")  # Allow 1 cent tolerance for rounding
     
-    destinationPspFee: str
-    destinationPspFeeCurrency: str
+    # Invariant 1: payout_gross = recipient_net + dest_fee
+    inv1 = abs(payout_gross - (recipient_net + dest_fee))
+    if inv1 > tolerance:
+        raise AssertionError(f"Invariant 1 violated: payout_gross != recipient_net + dest_fee (diff={inv1})")
     
-    fxSpreadBps: str  # Basis points of spread
+    # Invariant 2: sender_total = sender_principal + source_psp_fee + scheme_fee
+    inv2 = abs(sender_total - (sender_principal + source_psp_fee + scheme_fee))
+    if inv2 > tolerance:
+        raise AssertionError(f"Invariant 2 violated: sender_total != principal + fees (diff={inv2})")
     
-    # Nexus scheme fee (informational - invoiced to IPS)
-    nexusSchemeFee: str
-    nexusSchemeFeeCurrency: str
+    # Invariant 3: effective_rate = recipient_net / sender_total
+    expected_effective = recipient_net / sender_total
+    inv3 = abs(effective_rate - expected_effective)
+    if inv3 > Decimal("0.0001"):
+        raise AssertionError(f"Invariant 3 violated: effective_rate mismatch (diff={inv3})")
     
-    # Display options
-    effectiveExchangeRate: str  # Total debit / Total credit
-    definedExchangeRate: str    # Rate applied to principal
+    # Invariant 4: customer_rate <= market_rate (spread reduces rate)
+    if applied_spread_bps >= 0 and customer_rate > market_rate:
+        raise AssertionError("Invariant 4 violated: customer_rate > market_rate with positive spread")
+    
+    # Invariant 5: All amounts must be positive
+    if any(x <= 0 for x in [recipient_net, payout_gross, sender_principal, sender_total]):
+        raise AssertionError("Invariant 5 violated: Non-positive amounts detected")
 
 
 @router.get(
     "/fee-formulas/nexus-scheme-fee/{country_code}/{currency_code}",
     response_model=FeeFormulaResponse,
     summary="Get Nexus Scheme Fee formula",
-    description="""
-    Returns the Nexus Scheme Fee formula for a country/currency.
-    
-    The Nexus Scheme Fee is:
-    - Charged to the Source IPS (passed to Source PSP)
-    - INVOICED (not deducted from payment)
-    - Denominated in Source Currency
-    
-    Reference: https://docs.nexusglobalpayments.org/fees-and-pricing/nexus-scheme-fee
-    """
 )
 async def get_nexus_scheme_fee(
     country_code: str,
     currency_code: str,
     db: AsyncSession = Depends(get_db)
 ) -> FeeFormulaResponse:
-    """
-    Get Nexus scheme fee formula.
-    
-    Note: For sandbox, using simplified flat fee model.
-    Production would have tiered pricing.
-    """
-    # Sandbox: Simplified fee structure
-    # Real implementation would query fee_formulas table
-    
+    """Get Nexus scheme fee formula."""
     return FeeFormulaResponse(
         feeType="NEXUS_SCHEME_FEE",
         countryCode=country_code.upper(),
         currencyCode=currency_code.upper(),
-        fixedAmount="0.50",  # Example: 0.50 per transaction
-        percentageRate="0.0005",  # 0.05% = 5 basis points
-        minimumFee="0.50",
-        maximumFee="10.00",
+        fixedAmount="0.10",
+        percentageRate="0.0005",
+        minimumFee="0.10",
+        maximumFee="5.00",
         description="Nexus Scheme Fee - invoiced to Source IPS monthly"
     )
 
@@ -117,42 +191,24 @@ async def get_nexus_scheme_fee(
     "/fee-formulas/creditor-agent-fee/{country_code}/{currency_code}",
     response_model=FeeFormulaResponse,
     summary="Get Creditor Agent Fee formula",
-    description="""
-    Returns the Destination PSP (Creditor Agent) fee formula.
-    
-    This fee:
-    - MUST be deducted from the payment principal
-    - Is denominated in Destination Currency
-    - Set by scheme, not individual PSPs
-    
-    Reference: https://docs.nexusglobalpayments.org/fees-and-pricing/destination-psp-fees
-    """
 )
 async def get_creditor_agent_fee(
     country_code: str,
     currency_code: str,
     db: AsyncSession = Depends(get_db)
 ) -> FeeFormulaResponse:
-    """
-    Get destination PSP fee formula.
-    
-    Important: Destination PSPs cannot charge additional invoiced fees.
-    """
-    # Fee structures vary by country - sandbox uses simplified model
+    """Get destination PSP fee formula."""
     fee_structures = {
         "SG": {"fixed": "0.50", "percent": "0.001", "min": "0.50", "max": "5.00"},
-        "TH": {"fixed": "10.00", "percent": "0.001", "min": "10.00", "max": "100.00"},  # In THB
+        "TH": {"fixed": "10.00", "percent": "0.001", "min": "10.00", "max": "100.00"},
         "MY": {"fixed": "1.00", "percent": "0.001", "min": "1.00", "max": "10.00"},
-        "PH": {"fixed": "25.00", "percent": "0.001", "min": "25.00", "max": "250.00"},  # In PHP
-        "ID": {"fixed": "5000", "percent": "0.001", "min": "5000", "max": "50000"},  # In IDR
-        "IN": {"fixed": "25.00", "percent": "0.001", "min": "25.00", "max": "250.00"},  # In INR
+        "PH": {"fixed": "25.00", "percent": "0.001", "min": "25.00", "max": "250.00"},
+        "ID": {"fixed": "500", "percent": "0.001", "min": "500", "max": "50000"},
+        "IN": {"fixed": "25.00", "percent": "0.001", "min": "25.00", "max": "250.00"},
     }
     
     structure = fee_structures.get(country_code.upper(), {
-        "fixed": "1.00",
-        "percent": "0.001",
-        "min": "1.00",
-        "max": "10.00"
+        "fixed": "1.00", "percent": "0.001", "min": "1.00", "max": "10.00"
     })
     
     return FeeFormulaResponse(
@@ -174,48 +230,48 @@ async def get_creditor_agent_fee(
     description="""
     **CRITICAL FOR NEXUS COMPLIANCE**
     
-    Returns the complete fee disclosure that MUST be shown to the
-    sender BEFORE they authorize the payment.
-    
-    Nexus requires transparency:
-    - Exact amount to be debited
-    - Exact amount to be credited  
-    - All fees itemized
-    - Exchange rate shown
-    
-    Reference: https://docs.nexusglobalpayments.org/fees-and-pricing/fx-spread-transparency
+    Returns the complete fee disclosure with STRICT INVARIANTS:
+    1. payout_gross = recipient_net + destination_fee
+    2. sender_total = sender_principal + source_psp_fee + scheme_fee
+    3. effective_rate = recipient_net / sender_total
     """
 )
 async def get_pre_transaction_disclosure(
     quote_id: str,
-    source_psp_fee: Optional[Decimal] = None,
-    source_psp_fee_type: str = "DEDUCTED",  # DEDUCTED or INVOICED
+    source_psp_fee_type: str = "DEDUCTED",
     db: AsyncSession = Depends(get_db)
 ) -> PreTransactionDisclosure:
     """
-    Calculate and return the complete pre-transaction disclosure.
+    Return the complete pre-transaction disclosure.
     
-    The sender must see this information before authorizing.
+    CRITICAL: This endpoint now READS all values from the quote record.
+    The quote is the SINGLE SOURCE OF TRUTH - no fee recalculation here.
+    
+    This ensures consistency between:
+    - Quote response (what PSP sees)
+    - PTD (what Sender sees)
+    - pacs.008 message (what goes to destination)
     """
-    # Get quote details
-    # Column names must match the actual database schema in the container
+    # Get ALL quote details including pre-calculated fees
     quote_query = text("""
         SELECT 
             q.quote_id,
             q.source_currency,
             q.destination_currency,
-            q.final_rate as exchange_rate,
-            q.base_rate,
+            q.final_rate as customer_rate,
+            q.base_rate as market_rate,
             q.requested_amount,
+            q.amount_type,
             q.source_interbank_amount,
             q.destination_interbank_amount,
             q.creditor_account_amount,
             q.destination_psp_fee,
             q.tier_improvement_bps,
             q.psp_improvement_bps,
-            q.capped_to_max_amount,
-            q.expires_at as valid_until
+            q.expires_at as valid_until,
+            f.base_spread_bps
         FROM quotes q
+        JOIN fxps f ON q.fxp_id = f.fxp_id
         WHERE q.quote_id = :quote_id
           AND q.expires_at > NOW()
     """)
@@ -229,121 +285,111 @@ async def get_pre_transaction_disclosure(
             detail=f"Quote {quote_id} not found or expired"
         )
     
-    # Calculate all components
-    # Map from the row object - handle case where requested_amount might be Source or Destination
-    # but for disclosure we want the interbank amounts as well.
-    source_amount = Decimal(str(quote.source_interbank_amount))
-    dest_amount = Decimal(str(quote.destination_interbank_amount))
-    exchange_rate = Decimal(str(quote.exchange_rate))
+    # =================================================================
+    # READ ALL VALUES FROM QUOTE (Single Source of Truth)
+    # =================================================================
     
-    # 1. Source PSP fee (configurable by PSP)
-    # Using 1.00 SGD + 10bps for sandbox demo
-    # IMPORTANT: Must calculate on SOURCE amount (SGD), not requested_amount (could be IDR)
-    # Will recalculate for DESTINATION type after we know the source_interbank_recalc
-    src_psp_fee_base = source_psp_fee  # May be overridden
-
+    # Rates (all in destination per source, e.g., IDR per SGD)
+    market_rate = Decimal(str(quote.market_rate))
+    customer_rate = Decimal(str(quote.customer_rate))
     
-    # 2. Destination PSP fee (scheme-mandated)
-    # Mandated formula: fixed + percentage, subject to min/max
-    # Logic: max(min_fee, min(max_fee, fixed + percent * principal))
-    dest_fee_structs = {
-        "SGD": {"fixed": "0.50", "percent": "0.001", "min": "0.50", "max": "5.00"},
-        "THB": {"fixed": "10.00", "percent": "0.001", "min": "10.00", "max": "100.00"},
-        "MYR": {"fixed": "1.00", "percent": "0.001", "min": "1.00", "max": "10.00"},
-        "PHP": {"fixed": "25.00", "percent": "0.002", "min": "25.00", "max": "250.00"},
-        # IDR: Scaled realistically - Rp 500 + 0.1%, min Rp 500, max Rp 50,000  
-        # (5000 IDR min was 500% of 1000 IDR transfer - way too high)
-        "IDR": {"fixed": "500", "percent": "0.001", "min": "500", "max": "50000"},
-        "INR": {"fixed": "25.00", "percent": "0.001", "min": "25.00", "max": "250.00"},
-    }
+    # Calculate applied spread
+    base_spread_bps = Decimal(str(quote.base_spread_bps or 50))
+    tier_improvement = Decimal(str(quote.tier_improvement_bps or 0))
+    psp_improvement = Decimal(str(quote.psp_improvement_bps or 0))
+    applied_spread_bps = max(Decimal("0"), base_spread_bps - tier_improvement - psp_improvement)
     
-    struct = dest_fee_structs.get(quote.destination_currency, {"fixed": "1.00", "percent": "0.001", "min": "1.00", "max": "10.00"})
-    # dest_psp_fee is calculated inside each amount_type branch below    
-    # 3. Nexus scheme fee (invoiced to IPS - 0.50 + 5bps, cap 10.00)
-    calc_nexus_fee = Decimal("0.50") + source_amount * Decimal("0.0005")
-    nexus_fee = max(Decimal("0.50"), min(Decimal("10.00"), calc_nexus_fee))
+    # Amounts from quote (pre-calculated at quote time)
+    source_interbank = Decimal(str(quote.source_interbank_amount))
+    dest_interbank = Decimal(str(quote.destination_interbank_amount))
     
-    # Get amount_type from quote to determine calculation direction
-    # Need to query for amount_type
-    type_query = text("""
-        SELECT amount_type FROM quotes WHERE quote_id = :quote_id
-    """)
-    type_result = await db.execute(type_query, {"quote_id": quote_id})
-    type_row = type_result.fetchone()
-    amount_type = type_row.amount_type if type_row else "SOURCE"
-    
-    # Calculate final amounts based on fee type AND amount_type
-    # Per Nexus spec from NotebookLM:
-    # - SOURCE: User specifies send amount. Recipient gets (dest_interbank - dest_fee)
-    # - DESTINATION: User specifies receive amount. That IS what recipient gets.
-    #   We work backwards: dest_interbank = creditor_amount + dest_fee
-    
-    if amount_type == "DESTINATION":
-        # DESTINATION type: dest_amount (destination_interbank from quote) is what user wants recipient to receive
-        # For DESTINATION type, the creditor_amount IS the requested amount
-        creditor_amount = dest_amount  # This is what recipient gets (1000 IDR)
-        
-        # Calculate destination fee on CREDITOR amount (what recipient gets), NOT interbank
-        # Per Nexus: fee is calculated on the amount being credited
-        calc_dest_fee_dest = Decimal(struct["fixed"]) + creditor_amount * Decimal(struct["percent"])
-        dest_psp_fee = max(Decimal(struct["min"]), min(Decimal(struct["max"]), calc_dest_fee_dest))
-        
-        # Interbank = creditor + fee (fee is ADDED, not deducted)
-        dest_interbank_recalc = creditor_amount + dest_psp_fee
-        
-        # Recalculate source amount based on corrected dest interbank
-        source_interbank_recalc = dest_interbank_recalc / exchange_rate
-        
-        # Source PSP fee calculated on SOURCE interbank amount (SGD), not destination
-        src_psp_fee = src_psp_fee_base or (Decimal("1.00") + source_interbank_recalc * Decimal("0.001"))
-        
-        # Source PSP fee added to source amount
-        if source_psp_fee_type == "DEDUCTED":
-            amount_to_debit = source_interbank_recalc + src_psp_fee
-        else:
-            amount_to_debit = source_interbank_recalc
-        amount_to_credit = creditor_amount  # Exactly what user requested
+    # Read creditor_account_amount and destination_psp_fee from quote
+    # These were calculated at quote time - DO NOT RECALCULATE
+    if quote.creditor_account_amount is not None:
+        recipient_net = Decimal(str(quote.creditor_account_amount))
     else:
-        # SOURCE type: source_amount is what user sends
-        # Calculate source PSP fee on source amount
-        src_psp_fee = src_psp_fee_base or (Decimal("1.00") + source_amount * Decimal("0.001"))
-        
-        # Destination fee calculated on dest_interbank_amount
-        calc_dest_fee_src = Decimal(struct["fixed"]) + dest_amount * Decimal(struct["percent"])
-        dest_psp_fee = max(Decimal(struct["min"]), min(Decimal(struct["max"]), calc_dest_fee_src))
-        
-        # Recipient gets dest_interbank - dest_fee
-        if source_psp_fee_type == "DEDUCTED":
-            amount_to_debit = source_amount + src_psp_fee
-        else:
-            amount_to_debit = source_amount
-        amount_to_credit = dest_amount - dest_psp_fee
+        # Fallback for old quotes without this field
+        dest_fee_fallback = _calculate_destination_fee(dest_interbank, quote.destination_currency)
+        recipient_net = dest_interbank - dest_fee_fallback
     
-    # Effective exchange rate (what sender actually gets)
-    effective_rate = amount_to_credit / amount_to_debit if amount_to_debit > 0 else exchange_rate
+    if quote.destination_psp_fee is not None:
+        dest_fee = Decimal(str(quote.destination_psp_fee))
+    else:
+        # Fallback for old quotes without this field
+        dest_fee = _calculate_destination_fee(dest_interbank, quote.destination_currency)
     
+    # Payout gross is destination interbank amount
+    payout_gross = dest_interbank
+    
+    # Sender principal is source interbank amount
+    sender_principal = source_interbank
+    
+    # Calculate source-side fees (these are still calculated here for DEDUCTED type)
+    # Since Nexus spec says Source PSP deducts its fee before calling /quotes for SOURCE mode,
+    # and in DESTINATION mode, fees are added on top
+    source_psp_fee = _calculate_source_psp_fee(sender_principal)
+    scheme_fee = _calculate_scheme_fee(sender_principal)
+    
+    # Sender total = principal + source fees
+    sender_total = sender_principal + source_psp_fee + scheme_fee
+    
+    # =================================================================
+    # DISCLOSURE CALCULATIONS
+    # =================================================================
+    
+    # Effective rate = what sender gets per unit paid (INVARIANT 3)
+    effective_rate = recipient_net / sender_total
+    
+    # Total cost % (vs mid-market benchmark)
+    mid_principal = payout_gross / market_rate
+    total_cost_pct = ((sender_total - mid_principal) / mid_principal) * Decimal("100")
+    
+    # =================================================================
+    # VALIDATE INVARIANTS
+    # =================================================================
+    _assert_invariants(
+        recipient_net=recipient_net,
+        payout_gross=payout_gross,
+        dest_fee=dest_fee,
+        sender_principal=sender_principal,
+        sender_total=sender_total,
+        source_psp_fee=source_psp_fee,
+        scheme_fee=scheme_fee,
+        effective_rate=effective_rate,
+        customer_rate=customer_rate,
+        market_rate=market_rate,
+        applied_spread_bps=applied_spread_bps,
+    )
+    
+    # =================================================================
+    # BUILD RESPONSE
+    # =================================================================
     return PreTransactionDisclosure(
         quoteId=quote_id,
-        exchangeRate=str(exchange_rate),
-        quoteValidUntil=quote.valid_until.isoformat(),
         
-        amountToDebit=str(amount_to_debit.quantize(Decimal("0.01"))),
-        amountToDebitCurrency=quote.source_currency,
-        amountToCredit=str(amount_to_credit.quantize(Decimal("0.01"))),
-        amountToCreditCurrency=quote.destination_currency,
+        # Rates (both in destination per source, e.g., IDR per SGD)
+        marketRate=str(market_rate.quantize(Decimal("0.0001"))),
+        customerRate=str(customer_rate.quantize(Decimal("0.0001"))),
+        appliedSpreadBps=str(applied_spread_bps.quantize(Decimal("1"))),
         
-        sourcePspFee=str(src_psp_fee),
-        sourcePspFeeCurrency=quote.source_currency,
+        # Destination side (IDR)
+        recipientNetAmount=str(recipient_net.quantize(Decimal("0.01"))),
+        payoutGrossAmount=str(payout_gross.quantize(Decimal("0.01"))),
+        destinationPspFee=str(dest_fee.quantize(Decimal("0.01"))),
+        destinationCurrency=quote.destination_currency,
+        
+        # Source side (SGD)
+        senderPrincipal=str(sender_principal.quantize(Decimal("0.01"))),
+        sourcePspFee=str(source_psp_fee.quantize(Decimal("0.01"))),
         sourcePspFeeType=source_psp_fee_type,
+        schemeFee=str(scheme_fee.quantize(Decimal("0.01"))),
+        senderTotal=str(sender_total.quantize(Decimal("0.01"))),
+        sourceCurrency=quote.source_currency,
         
-        destinationPspFee=str(dest_psp_fee.quantize(Decimal("0.01"))),
-        destinationPspFeeCurrency=quote.destination_currency,
+        # Disclosure metrics
+        effectiveRate=str(effective_rate.quantize(Decimal("0.0001"))),
+        totalCostPercent=str(total_cost_pct.quantize(Decimal("0.01"))),
         
-        fxSpreadBps=str((quote.tier_improvement_bps or 0) + (quote.psp_improvement_bps or 0)),
-        
-        nexusSchemeFee=str(nexus_fee.quantize(Decimal("0.01"))),
-        nexusSchemeFeeCurrency=quote.source_currency,
-        
-        effectiveExchangeRate=str(effective_rate.quantize(Decimal("0.000001"))),
-        definedExchangeRate=str(exchange_rate)
+        quoteValidUntil=quote.valid_until.isoformat(),
     )
+

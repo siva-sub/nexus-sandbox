@@ -89,12 +89,12 @@ export function PaymentPage() {
 
     // Data state
     const [countries, setCountries] = useState<Country[]>([]);
-    const [proxyTypes, setProxyTypes] = useState<{ value: string; label: string; inputs?: any[] }[]>([]);
+    const [proxyTypes, setProxyTypes] = useState<import("../types").AddressTypeWithInputs[]>([]);
     const [quotes, setQuotes] = useState<Quote[]>([]);
     const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
     const [feeBreakdown, setFeeBreakdown] = useState<FeeBreakdown | null>(null);
     const [resolution, setResolution] = useState<ProxyResolutionResult | null>(null);
-    const [recipientErrors, setRecipientErrors] = useState<Record<string, string>>({});
+    const [recipientErrors, setRecipientErrors] = useState<Record<string, string | null>>({});
     const [intermediaries, setIntermediaries] = useState<IntermediaryAgentsResponse | null>(null);
 
 
@@ -106,12 +106,17 @@ export function PaymentPage() {
 
     // Loading states
     const [loading, setLoading] = useState({ countries: false, resolve: false, submit: false, qrScan: false });
+    const [devMode, setDevMode] = useState(false);
+    const [now, setNow] = useState(Date.now());
+
+    // Ticker for quote expiration
+    useEffect(() => {
+        const timer = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(timer);
+    }, []);
 
     // QR Scan state
     const [qrInput, setQrInput] = useState("");
-
-    // Developer Mode state
-    const [devMode, setDevMode] = useState(false);
 
     // Fetch countries on mount
     useEffect(() => {
@@ -121,7 +126,7 @@ export function PaymentPage() {
                 const data = await getCountries();
                 setCountries(data.countries);
                 advanceStep(1);
-            } catch (error) {
+            } catch {
                 // No fallback - require backend connection for Docker-ready release
                 notifications.show({
                     title: "Gateway Unavailable",
@@ -145,13 +150,13 @@ export function PaymentPage() {
                 const fetchAddressData = async () => {
                     try {
                         const data = await getAddressTypes(selectedCountry);
-                        setProxyTypes(data.addressTypes.map((t: any) => ({
+                        setProxyTypes(data.addressTypes.map((t) => ({
+                            ...t,
                             value: t.addressTypeId,
                             label: t.addressTypeName,
-                            inputs: t.inputs,
-                        })));
+                        } as import("../types").AddressTypeWithInputs & { value: string; label: string })));
 
-                    } catch (e) {
+                    } catch {
                         // No fallback - address types come from backend DB
                         notifications.show({
                             title: "Address Types Error",
@@ -166,11 +171,11 @@ export function PaymentPage() {
                     try {
                         const data = await getQuotes(sourceCountry || "SG", selectedCountry, Number(amount), amountType);
                         setQuotes(data.quotes);
-                    } catch (e) {
+                    } catch {
                         // No fallback - quotes come from FXP via backend
                         notifications.show({
                             title: "Quotes Unavailable",
-                            message: "Could not fetch FX quotes. Ensure FX rates are seeded in database.",
+                            message: "Could not fetch FX quotes. Ensure FX are seeded in database.",
                             color: "orange",
                         });
                     }
@@ -182,6 +187,47 @@ export function PaymentPage() {
             }
         }
     }, [selectedCountry, sourceCountry, amount, amountType, countries]);
+
+    // Quote expiration detection
+    useEffect(() => {
+        if (selectedQuote) {
+            const expiresAt = new Date(selectedQuote.expiresAt).getTime();
+            const isExpired = now >= expiresAt;
+
+            if (isExpired) {
+                // Clear the expired quote
+                setSelectedQuote(null);
+                setFeeBreakdown(null);
+
+                // Show notification
+                notifications.show({
+                    title: "Quote Expired",
+                    message: "Your selected quote has expired. Please select a new quote to continue.",
+                    color: "orange",
+                    icon: <IconAlertCircle size={16} />,
+                    autoClose: 5000,
+                });
+
+                // Refresh quotes if we have the necessary data
+                if (selectedCountry && sourceCountry && amount) {
+                    const refreshQuotes = async () => {
+                        try {
+                            const quotesData = await getQuotes(sourceCountry, selectedCountry, Number(amount), amountType);
+                            setQuotes(quotesData.quotes);
+                            advanceStep(5);
+                        } catch {
+                            notifications.show({
+                                title: "Quote Refresh Failed",
+                                message: "Could not fetch new quotes. Please try again.",
+                                color: "red",
+                            });
+                        }
+                    };
+                    refreshQuotes();
+                }
+            }
+        }
+    }, [selectedQuote, now, selectedCountry, sourceCountry, amount, amountType]);
 
     // Clear selected items when state changes
     useEffect(() => {
@@ -205,8 +251,8 @@ export function PaymentPage() {
 
     const handleResolve = async () => {
         const typeData = proxyTypes.find(t => t.value === selectedProxyType);
-        const requiredFields = typeData?.inputs?.map((i: any) => i.fieldName) || [];
-        const hasAllFields = requiredFields.every((f: any) => !!recipientData[f]);
+        const requiredFields = typeData?.inputs?.map((i: import("../types").AddressTypeInputDetails) => i.fieldName) || [];
+        const hasAllFields = requiredFields.every((f) => !!recipientData[f]);
 
         if (!selectedCountry || !selectedProxyType || !hasAllFields) {
             notifications.show({ title: "Validation", message: "Please fill all required recipient fields", color: "yellow" });
@@ -230,7 +276,8 @@ export function PaymentPage() {
                 color: "green",
                 icon: <IconCheck size={16} />,
             });
-        } catch (e: any) {
+        } catch (err: unknown) {
+            const e = err as Error & { statusReasonCode?: string; detail?: string };
             // Mark step 8 as error state
             setSteps((prev) =>
                 prev.map((s) => ({
@@ -253,10 +300,11 @@ export function PaymentPage() {
 
             // Set error resolution for display
             setResolution({
+                status: "FAILED",
                 verified: false,
                 error: statusCode,
                 errorMessage: description,
-            } as any);
+            });
 
             notifications.show({
                 title: `Resolution Failed (${statusCode})`,
@@ -325,7 +373,7 @@ export function PaymentPage() {
                 icon: <IconQrcode size={16} />,
             });
 
-        } catch (e) {
+        } catch {
             notifications.show({ title: "QR Parse Failed", message: "Invalid EMVCo QR format", color: "red" });
         } finally {
             setLoading((prev) => ({ ...prev, qrScan: false }));
@@ -344,7 +392,7 @@ export function PaymentPage() {
             const interData = await getIntermediaryAgents(quote.quoteId);
             setIntermediaries(interData);
             advanceStep(13);
-        } catch (e) {
+        } catch {
             notifications.show({ title: "Error", message: "Failed to fetch required payment data", color: "red" });
         }
     };
@@ -511,12 +559,12 @@ export function PaymentPage() {
                                 <Select
                                     label="Target Proxy Type"
                                     placeholder="Select method"
-                                    data={proxyTypes}
+                                    data={proxyTypes.map(t => ({ value: t.value || t.addressTypeId, label: t.label || t.addressTypeName }))}
                                     value={selectedProxyType}
                                     onChange={setSelectedProxyType}
                                     disabled={!selectedCountry}
                                 />
-                                {proxyTypes.find(t => t.value === selectedProxyType)?.inputs?.map((input: any) => (
+                                {proxyTypes.find(t => t.value === selectedProxyType)?.inputs?.map((input: import("../types").AddressTypeInputDetails) => (
                                     <TextInput
                                         key={input.fieldName}
                                         label={input.displayLabel}
@@ -572,10 +620,10 @@ export function PaymentPage() {
                                 )}
 
                                 {resolution && !resolution.verified && (
-                                    <Alert color="red" title={`Resolution Failed (${(resolution as any).error})`} icon={<IconAlertCircle size={16} />} p="xs">
+                                    <Alert color="red" title={`Resolution Failed (${resolution.error || "UNKNOWN"})`} icon={<IconAlertCircle size={16} />} p="xs">
                                         <Stack gap={4}>
-                                            <Text size="xs" fw={700}>Error Code: {(resolution as any).error}</Text>
-                                            <Text size="xs">{(resolution as any).errorMessage}</Text>
+                                            <Text size="xs" fw={700}>Error Code: {resolution.error}</Text>
+                                            <Text size="xs">{resolution.errorMessage}</Text>
                                             <Text size="xs" c="dimmed">Reference: ISO 20022 ExternalStatusReason1Code</Text>
                                         </Stack>
                                     </Alert>
@@ -625,22 +673,61 @@ export function PaymentPage() {
                                                     : undefined
                                             }}
                                         >
-                                            <Group justify="space-between" align="center">
+                                            <Group justify="space-between" align="flex-start">
                                                 <Box>
-                                                    <Text fw={700} size="lg">
-                                                        {selectedCountryData?.currencies[0]?.currencyCode} {quote.destinationInterbankAmount}
-                                                    </Text>
-                                                    <Text size="xs" c="dimmed">
-                                                        via {quote.fxpName} • Rate: {quote.exchangeRate}
+                                                    {/* Show net to recipient when available */}
+                                                    {quote.creditorAccountAmount ? (
+                                                        <>
+                                                            <Text fw={700} size="lg" c="green">
+                                                                {selectedCountryData?.currencies[0]?.currencyCode} {Number(quote.creditorAccountAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                            </Text>
+                                                            <Text size="xs" c="dimmed">
+                                                                Net to recipient (after {quote.destinationPspFee ? `${selectedCountryData?.currencies[0]?.currencyCode} ${Number(quote.destinationPspFee).toLocaleString()} fee` : 'D-PSP fee'})
+                                                            </Text>
+                                                        </>
+                                                    ) : (
+                                                        <Text fw={700} size="lg">
+                                                            {selectedCountryData?.currencies[0]?.currencyCode} {quote.destinationInterbankAmount}
+                                                        </Text>
+                                                    )}
+                                                    <Text size="xs" c="dimmed" mt={4}>
+                                                        via {quote.fxpName} • Rate: {Number(quote.exchangeRate).toLocaleString(undefined, { maximumFractionDigits: 4 })}
                                                     </Text>
                                                 </Box>
                                                 <Stack gap={2} align="flex-end">
                                                     <Badge size="xs" color="blue">
                                                         Quote Lock
                                                     </Badge>
-                                                    <Text size="xs" c="dimmed">
-                                                        valid until {new Date(quote.expiresAt).toLocaleTimeString()}
-                                                    </Text>
+                                                    {(() => {
+                                                        const expiresAt = new Date(quote.expiresAt).getTime();
+                                                        const remainingSecs = Math.max(0, Math.floor((expiresAt - now) / 1000));
+                                                        const totalSecs = 600; // 10 minutes total
+                                                        const progressPct = (remainingSecs / totalSecs) * 100;
+                                                        const isWarning = remainingSecs <= 60;
+                                                        const isCritical = remainingSecs <= 30;
+
+                                                        return (
+                                                            <>
+                                                                <Progress
+                                                                    value={progressPct}
+                                                                    size="xs"
+                                                                    w={60}
+                                                                    color={isCritical ? "red" : isWarning ? "orange" : "blue"}
+                                                                    radius="xl"
+                                                                />
+                                                                <Text
+                                                                    size="xs"
+                                                                    c={isCritical ? "red" : isWarning ? "orange" : "dimmed"}
+                                                                    fw={isWarning ? 600 : 400}
+                                                                >
+                                                                    {remainingSecs > 60
+                                                                        ? `${Math.floor(remainingSecs / 60)}m ${remainingSecs % 60}s`
+                                                                        : `${remainingSecs}s`}
+                                                                    {isCritical && " ⚠️"}
+                                                                </Text>
+                                                            </>
+                                                        );
+                                                    })()}
                                                 </Stack>
                                             </Group>
                                         </Card>
@@ -650,7 +737,7 @@ export function PaymentPage() {
                                         Select a destination country to retrieve live multi-provider quotes via Nexus FXP Aggregation.
                                     </Alert>
                                 )}
-                                {feeBreakdown && <FeeCard fee={feeBreakdown} quote={selectedQuote} sourceAmount={Number(amount)} />}
+                                {feeBreakdown && <FeeCard fee={feeBreakdown} quote={selectedQuote} now={now} />}
                             </Stack>
                         </Tabs.Panel>
 
@@ -812,11 +899,11 @@ export function PaymentPage() {
                                         <Table.Td><Badge color="green" variant="light" size="sm">Amount Conversion</Badge></Table.Td>
                                         <Table.Td>
                                             <Text size="xs">InterbankSettlementAmount:</Text>
-                                            <Code>{feeBreakdown?.amountToDebitCurrency || sourceCountry} {selectedQuote?.sourceInterbankAmount || amount}</Code>
+                                            <Code>{feeBreakdown?.sourceCurrency || sourceCountry} {selectedQuote?.sourceInterbankAmount || amount}</Code>
                                         </Table.Td>
                                         <Table.Td>
                                             <Text size="xs">InterbankSettlementAmount:</Text>
-                                            <Code>{feeBreakdown?.amountToCreditCurrency || selectedCountry} {selectedQuote?.destinationInterbankAmount || '-'}</Code>
+                                            <Code>{feeBreakdown?.destinationCurrency || selectedCountry} {selectedQuote?.destinationInterbankAmount || '-'}</Code>
                                         </Table.Td>
                                     </Table.Tr>
                                     <Table.Tr>
@@ -878,13 +965,18 @@ export function PaymentPage() {
     );
 }
 
-// Fee breakdown card component
-function FeeCard({ fee, quote, sourceAmount }: { fee: FeeBreakdown; quote: Quote | null; sourceAmount: number }) {
-    const totalFeesInSource = Number(fee.sourcePspFee) + Number(fee.nexusSchemeFee);
-    // Note: Destination PSP fee is deducted from the credit side, but for G20 % we consider total cost impact
-    const totalImpact = totalFeesInSource + (Number(fee.destinationPspFee) / Number(fee.definedExchangeRate));
-    const feePercentage = (totalImpact / sourceAmount) * 100;
-    const isWithinG20 = feePercentage <= 3.0;
+// Fee breakdown card component - displays Pre-Transaction Disclosure
+// With proper invariants: payout_gross = recipient_net + dest_fee, sender_total = principal + fees
+function FeeCard({ fee, quote, now }: { fee: FeeBreakdown; quote: Quote | null; now: number }) {
+    // Helper to safely parse numbers - returns 0 if NaN
+    const safeNumber = (val: string | undefined | null): number => {
+        const n = Number(val);
+        return isNaN(n) ? 0 : n;
+    };
+
+    // Use totalCostPercent from backend (calculated vs mid-market benchmark)
+    const totalCostPct = Math.abs(safeNumber(fee.totalCostPercent));
+    const isWithinG20 = totalCostPct <= 3.0;
 
     return (
         <Card withBorder radius="md" p="xl" bg="var(--mantine-color-dark-8)">
@@ -898,7 +990,7 @@ function FeeCard({ fee, quote, sourceAmount }: { fee: FeeBreakdown; quote: Quote
                     variant="light"
                     leftSection={<IconInfoCircle size={14} />}
                 >
-                    {feePercentage.toFixed(2)}% Total Cost
+                    {totalCostPct.toFixed(2)}% Cost vs Mid-Market
                 </Badge>
             </Group>
 
@@ -911,7 +1003,7 @@ function FeeCard({ fee, quote, sourceAmount }: { fee: FeeBreakdown; quote: Quote
                     </Text>
                 </Group>
                 <Progress
-                    value={Math.min(100, (feePercentage / 3.0) * 100)}
+                    value={Math.min(100, (totalCostPct / 3.0) * 100)}
                     color={isWithinG20 ? "green" : "orange"}
                     size="sm"
                     radius="xl"
@@ -919,56 +1011,93 @@ function FeeCard({ fee, quote, sourceAmount }: { fee: FeeBreakdown; quote: Quote
             </Box>
 
             <Stack gap="xl">
+                {/* Sender Side (Amount to be Debited) */}
                 <Box>
                     <Text size="sm" c="dimmed">Amount to be Debited (Total)</Text>
                     <Text size="xl" fw={700} c="blue">
-                        {fee.amountToDebitCurrency} {Number(fee.amountToDebit).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        {fee.sourceCurrency} {safeNumber(fee.senderTotal).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </Text>
                 </Box>
 
+                {/* Recipient Side (Amount Received) */}
                 <Box>
-                    <Text size="sm" c="dimmed">Amount Recipient Receives</Text>
+                    <Text size="sm" c="dimmed">Amount Recipient Receives (Net)</Text>
                     <Text size="xl" fw={700} c="green">
-                        {fee.amountToCreditCurrency} {Number(fee.amountToCredit).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        {fee.destinationCurrency} {safeNumber(fee.recipientNetAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </Text>
                 </Box>
 
+                {/* Fee Breakdown Table - with reconciliation */}
                 <Table withColumnBorders={false} verticalSpacing="sm">
                     <Table.Tbody>
                         <Table.Tr>
-                            <Table.Td c="dimmed">Source PSP Fee ({fee.sourcePspFeeType})</Table.Td>
-                            <Table.Td ta="right">{fee.sourcePspFeeCurrency} {fee.sourcePspFee}</Table.Td>
+                            <Table.Td fw={500}>Sender Principal (FX Amount)</Table.Td>
+                            <Table.Td ta="right">{fee.sourceCurrency} {safeNumber(fee.senderPrincipal).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Table.Td>
                         </Table.Tr>
                         <Table.Tr>
-                            <Table.Td c="dimmed">Destination PSP Fee (Deducted)</Table.Td>
-                            <Table.Td ta="right">{fee.destinationPspFeeCurrency} {fee.destinationPspFee}</Table.Td>
+                            <Table.Td c="dimmed" pl="lg">+ Source PSP Fee ({fee.sourcePspFeeType})</Table.Td>
+                            <Table.Td ta="right" c="dimmed">{fee.sourceCurrency} {safeNumber(fee.sourcePspFee).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Table.Td>
                         </Table.Tr>
                         <Table.Tr>
-                            <Table.Td c="dimmed">Nexus Scheme Fee</Table.Td>
-                            <Table.Td ta="right">{fee.nexusSchemeFeeCurrency} {fee.nexusSchemeFee}</Table.Td>
+                            <Table.Td c="dimmed" pl="lg">+ Nexus Scheme Fee</Table.Td>
+                            <Table.Td ta="right" c="dimmed">{fee.sourceCurrency} {safeNumber(fee.schemeFee).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Table.Td>
                         </Table.Tr>
-                        <Table.Tr>
-                            <Table.Td c="dimmed">FX Spread (Estimated)</Table.Td>
-                            <Table.Td ta="right">{fee.fxSpreadBps} bps</Table.Td>
+                        <Table.Tr style={{ borderTop: "1px solid var(--mantine-color-dark-4)" }}>
+                            <Table.Td fw={600}>= Total Debited</Table.Td>
+                            <Table.Td ta="right" fw={600}>{fee.sourceCurrency} {safeNumber(fee.senderTotal).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Table.Td>
                         </Table.Tr>
                     </Table.Tbody>
                 </Table>
 
+                <Table withColumnBorders={false} verticalSpacing="sm">
+                    <Table.Tbody>
+                        <Table.Tr>
+                            <Table.Td fw={500}>Payout Amount (Gross)</Table.Td>
+                            <Table.Td ta="right">{fee.destinationCurrency} {safeNumber(fee.payoutGrossAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Table.Td>
+                        </Table.Tr>
+                        <Table.Tr>
+                            <Table.Td c="dimmed" pl="lg">− Destination PSP Fee (Deducted)</Table.Td>
+                            <Table.Td ta="right" c="dimmed">{fee.destinationCurrency} {safeNumber(fee.destinationPspFee).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Table.Td>
+                        </Table.Tr>
+                        <Table.Tr style={{ borderTop: "1px solid var(--mantine-color-dark-4)" }}>
+                            <Table.Td fw={600}>= Recipient Receives (Net)</Table.Td>
+                            <Table.Td ta="right" fw={600}>{fee.destinationCurrency} {safeNumber(fee.recipientNetAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Table.Td>
+                        </Table.Tr>
+                    </Table.Tbody>
+                </Table>
+
+                {/* Exchange Rates with explicit units */}
                 <Stack gap="xs" p="md" bg="var(--mantine-color-dark-7)" style={{ borderRadius: "8px" }}>
                     <Group justify="space-between">
                         <Stack gap={0}>
-                            <Text size="sm" fw={700}>Effective Exchange Rate</Text>
-                            <Text size="xs" c="dimmed">Mandatory Transparency View</Text>
+                            <Text size="sm" fw={700}>Market FX Rate (Mid)</Text>
+                            <Text size="xs" c="dimmed">Before spread applied</Text>
                         </Stack>
-                        <Text size="lg" fw={700} c="blue">{fee.effectiveExchangeRate}</Text>
+                        <Text size="lg" fw={700} c="blue">
+                            1 {fee.sourceCurrency} = {safeNumber(fee.marketRate).toLocaleString(undefined, { maximumFractionDigits: 4 })} {fee.destinationCurrency}
+                        </Text>
                     </Group>
                     <Group justify="space-between">
-                        <Text size="sm" c="dimmed">Agreed FX Rate (Market)</Text>
-                        <Text size="sm">{fee.definedExchangeRate}</Text>
+                        <Stack gap={0}>
+                            <Text size="sm" c="dimmed">Customer Rate (After {fee.appliedSpreadBps} bps spread)</Text>
+                            <Text size="xs" c="dimmed">Rate used for FX conversion</Text>
+                        </Stack>
+                        <Text size="sm" c="cyan" fw={500}>
+                            1 {fee.sourceCurrency} = {safeNumber(fee.customerRate).toLocaleString(undefined, { maximumFractionDigits: 4 })} {fee.destinationCurrency}
+                        </Text>
+                    </Group>
+                    <Group justify="space-between">
+                        <Stack gap={0}>
+                            <Text size="sm" c="dimmed">Effective Rate (All-In)</Text>
+                            <Text size="xs" c="dimmed">Recipient receives ÷ Sender pays</Text>
+                        </Stack>
+                        <Text size="sm" c="orange" fw={500}>
+                            1 {fee.sourceCurrency} = {safeNumber(fee.effectiveRate).toLocaleString(undefined, { maximumFractionDigits: 4 })} {fee.destinationCurrency}
+                        </Text>
                     </Group>
                     {quote && (
                         <Badge color="blue" variant="dot" size="lg" fullWidth mt="sm">
-                            Quote locked for next {Math.max(0, Math.floor((new Date(quote.expiresAt.replace(/\+00:00Z$/, 'Z')).getTime() - Date.now()) / 1000))}s
+                            Quote locked for next {Math.max(0, Math.floor((new Date(quote.expiresAt.replace(/\+00:00Z$/, 'Z')).getTime() - now) / 1000))}s
                         </Badge>
                     )}
                 </Stack>
@@ -1030,7 +1159,7 @@ function LifecycleAccordion({
                                         {/* Step-specific details */}
                                         {step.id === 6 && feeBreakdown && (
                                             <Box mt={4} p="xs" bg="var(--mantine-color-dark-6)" style={{ borderRadius: "4px" }}>
-                                                <Text size="xs">Rate: {feeBreakdown.exchangeRate} • Total Debit: {feeBreakdown.amountToDebitCurrency} {feeBreakdown.amountToDebit}</Text>
+                                                <Text size="xs">Rate: {feeBreakdown.marketRate} • Total Debit: {feeBreakdown.sourceCurrency} {feeBreakdown.senderTotal}</Text>
                                             </Box>
                                         )}
                                         {step.id === 8 && resolution && (

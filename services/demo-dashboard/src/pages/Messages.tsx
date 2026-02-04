@@ -180,8 +180,8 @@ const FIELD_MAPPINGS = [
 
 export function MessagesPage() {
   const [activeMessage, setActiveMessage] = useState<string>("acmt.023");
-  const [livePayments, setLivePayments] = useState<any[]>([]);
-  const [selectedPaymentEvents, setSelectedPaymentEvents] = useState<any[]>([]);
+  const [livePayments, setLivePayments] = useState<import("../types").Payment[]>([]);
+  const [selectedPaymentEvents, setSelectedPaymentEvents] = useState<import("../types").PaymentEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedUetr, setSelectedUetr] = useState<string | null>(null);
 
@@ -257,7 +257,7 @@ export function MessagesPage() {
                     <Table.Tr key={p.uetr} bg={selectedUetr === p.uetr ? "var(--mantine-color-blue-light)" : undefined}>
                       <Table.Td>
                         <Text size="xs" ff="monospace" truncate>{p.uetr}</Text>
-                        <Text size="xs" c="dimmed">{new Date(p.initiated_at).toLocaleString()}</Text>
+                        <Text size="xs" c="dimmed">{new Date(p.initiated_at || p.createdAt).toLocaleString()}</Text>
                       </Table.Td>
                       <Table.Td>
                         <Badge size="xs" color={p.status === "ACSP" ? "green" : "blue"}>{p.status}</Badge>
@@ -280,14 +280,14 @@ export function MessagesPage() {
                     <Accordion.Item key={idx} value={`item-${idx}`}>
                       <Accordion.Control icon={<IconCode size={16} />}>
                         <Group justify="space-between" pr="md">
-                          <Text size="sm" fw={500}>{ev.event_type}</Text>
+                          <Text size="sm" fw={500}>{ev.event_type || ev.eventType}</Text>
                           <Text size="xs" c="dimmed">{ev.actor}</Text>
                         </Group>
                       </Accordion.Control>
                       <Accordion.Panel>
-                        {ev.data?.transformedXml || ev.data?.rawXml ? (
+                        {((ev.data as Record<string, string>).transformedXml || (ev.data as Record<string, string>).rawXml) ? (
                           <CodeHighlight
-                            code={ev.data.transformedXml || ev.data.rawXml}
+                            code={(ev.data as Record<string, string>).transformedXml || (ev.data as Record<string, string>).rawXml}
                             language="xml"
                             styles={{ code: { fontSize: 10 } }}
                           />

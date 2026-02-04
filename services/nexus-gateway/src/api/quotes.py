@@ -28,6 +28,50 @@ router = APIRouter()
 
 
 # =============================================================================
+# Fee Calculation Functions (Single Source of Truth)
+# =============================================================================
+
+def _calculate_destination_psp_fee(amount: Decimal, currency: str) -> Decimal:
+    """
+    Calculate destination PSP fee based on scheme rules.
+    Fee is DEDUCTED from payout (beneficiary receives less).
+    
+    Reference: https://docs.nexusglobalpayments.org/fees-and-pricing
+    """
+    fee_structures = {
+        "SGD": {"fixed": Decimal("0.50"), "percent": Decimal("0.001"), "min": Decimal("0.50"), "max": Decimal("5.00")},
+        "THB": {"fixed": Decimal("10.00"), "percent": Decimal("0.001"), "min": Decimal("10.00"), "max": Decimal("100.00")},
+        "MYR": {"fixed": Decimal("1.00"), "percent": Decimal("0.001"), "min": Decimal("1.00"), "max": Decimal("10.00")},
+        "PHP": {"fixed": Decimal("25.00"), "percent": Decimal("0.002"), "min": Decimal("25.00"), "max": Decimal("250.00")},
+        "IDR": {"fixed": Decimal("500"), "percent": Decimal("0.001"), "min": Decimal("500"), "max": Decimal("50000")},
+        "INR": {"fixed": Decimal("25.00"), "percent": Decimal("0.001"), "min": Decimal("25.00"), "max": Decimal("250.00")},
+    }
+    
+    struct = fee_structures.get(currency, {"fixed": Decimal("1.00"), "percent": Decimal("0.001"), "min": Decimal("1.00"), "max": Decimal("10.00")})
+    
+    calculated = struct["fixed"] + amount * struct["percent"]
+    return max(struct["min"], min(struct["max"], calculated))
+
+
+def _calculate_source_psp_fee(principal: Decimal) -> Decimal:
+    """
+    Calculate source PSP fee.
+    Fee structure: 0.50 SGD fixed + 0.1% of principal, min 0.50, max 10.00
+    """
+    calculated = Decimal("0.50") + principal * Decimal("0.001")
+    return max(Decimal("0.50"), min(Decimal("10.00"), calculated))
+
+
+def _calculate_scheme_fee(principal: Decimal) -> Decimal:
+    """
+    Calculate Nexus scheme fee.
+    Fee structure: 0.10 SGD fixed + 0.05% of principal, min 0.10, max 5.00
+    """
+    calculated = Decimal("0.10") + principal * Decimal("0.0005")
+    return max(Decimal("0.10"), min(Decimal("5.00"), calculated))
+
+
+# =============================================================================
 # Response Models
 # =============================================================================
 
@@ -151,6 +195,14 @@ async def get_quotes(
     Generate FX quotes for a payment.
     
     This implements Steps 3-4 of the Nexus payment flow.
+    
+    CRITICAL: This endpoint now calculates ALL fees at quote creation time,
+    making the quote the SINGLE SOURCE OF TRUTH for:
+    - Exchange rates
+    - Destination PSP fee
+    - Source PSP fee (for disclosure purposes)
+    - Scheme fee
+    - Creditor account amount (net to recipient)
     """
     
     # Get currencies for countries
@@ -234,7 +286,7 @@ async def get_quotes(
         base_rate = Decimal(str(row.base_rate))
         spread_bps = row.base_spread_bps
         
-        # Apply tier improvement
+        # Apply tier improvement (larger transactions get positive improvement)
         tier_improvement_bps = 0
         if row.tier_improvements:
             for tier in sorted(row.tier_improvements, key=lambda x: x["minAmount"], reverse=True):
@@ -242,55 +294,86 @@ async def get_quotes(
                     tier_improvement_bps = tier["improvementBps"]
                     break
         
-        # Apply PSP improvement
+        # Apply PSP-specific improvement
         psp_improvement_bps = 0
         if source_psp_bic and row.psp_improvements:
             psp_improvement_bps = row.psp_improvements.get(source_psp_bic.upper(), 0)
         
-        # Calculate final spread
-        final_spread_bps = spread_bps - tier_improvement_bps - psp_improvement_bps
-        final_spread = Decimal(final_spread_bps) / Decimal(10000)
+        # Calculate final rate per Nexus spec
+        total_improvement_bps = tier_improvement_bps + psp_improvement_bps
+        net_adjustment_bps = total_improvement_bps - spread_bps
+        customer_rate = base_rate * (1 + Decimal(net_adjustment_bps) / Decimal(10000))
         
-        # Final rate (for buy side, worse rate for customer)
-        final_rate = base_rate * (1 - final_spread)
+        # =================================================================
+        # CALCULATE ALL FEES AT QUOTE TIME (Single Source of Truth)
+        # =================================================================
         
-        # Calculate amounts based on amount_type
-        if amount_type == "SOURCE":
-            source_amount = amount
-            dest_amount = source_amount * final_rate
-        else:  # DESTINATION
-            dest_amount = amount
-            source_amount = dest_amount / final_rate
+        if amount_type == "DESTINATION":
+            # User specifies NET amount recipient should receive
+            creditor_account_amount = amount  # This is what recipient gets NET
+            
+            # Calculate destination fee on net amount, then gross up
+            dest_psp_fee = _calculate_destination_psp_fee(creditor_account_amount, dest_currency)
+            dest_interbank_amount = creditor_account_amount + dest_psp_fee  # Gross
+            
+            # Calculate source principal from gross payout
+            source_interbank_amount = dest_interbank_amount / customer_rate
+            
+        else:  # SOURCE
+            # User specifies total to DEBIT (we need to work backwards)
+            # For simplicity, treat source amount as interbank amount (fees added separately in PTD)
+            source_interbank_amount = amount
+            dest_interbank_amount = source_interbank_amount * customer_rate
+            
+            # Calculate destination fee and net to recipient
+            dest_psp_fee = _calculate_destination_psp_fee(dest_interbank_amount, dest_currency)
+            creditor_account_amount = dest_interbank_amount - dest_psp_fee
+        
+        # Calculate source-side fees (for disclosure, not deducted from interbank)
+        source_psp_fee_calc = _calculate_source_psp_fee(source_interbank_amount)
+        scheme_fee_calc = _calculate_scheme_fee(source_interbank_amount)
         
         # Check and apply capping
-        # Reference: https://docs.nexusglobalpayments.org/fx-provision/maximum-value-of-a-nexus-payment
         capped = False
-        if source_amount > source_max:
-            source_amount = source_max
-            dest_amount = source_amount * final_rate
+        if source_interbank_amount > source_max:
+            source_interbank_amount = source_max
+            dest_interbank_amount = source_interbank_amount * customer_rate
+            dest_psp_fee = _calculate_destination_psp_fee(dest_interbank_amount, dest_currency)
+            creditor_account_amount = dest_interbank_amount - dest_psp_fee
             capped = True
-        if dest_amount > dest_max:
-            dest_amount = dest_max
-            source_amount = dest_amount / final_rate
+        if dest_interbank_amount > dest_max:
+            dest_interbank_amount = dest_max
+            source_interbank_amount = dest_interbank_amount / customer_rate
+            dest_psp_fee = _calculate_destination_psp_fee(dest_interbank_amount, dest_currency)
+            creditor_account_amount = dest_interbank_amount - dest_psp_fee
             capped = True
+        
+        # Ensure non-negative creditor amount
+        if creditor_account_amount <= 0:
+            # Skip this quote - fees exceed payment
+            continue
         
         # Round amounts
-        source_amount = source_amount.quantize(Decimal("0.01"))
-        dest_amount = dest_amount.quantize(Decimal("0.01"))
+        source_interbank_amount = source_interbank_amount.quantize(Decimal("0.01"))
+        dest_interbank_amount = dest_interbank_amount.quantize(Decimal("0.01"))
+        creditor_account_amount = creditor_account_amount.quantize(Decimal("0.01"))
+        dest_psp_fee = dest_psp_fee.quantize(Decimal("0.01"))
         
-        # Store quote in database
+        # Store quote in database WITH ALL FEES
         insert_query = text("""
             INSERT INTO quotes (
                 quote_id, requesting_psp_bic, source_country, destination_country,
                 source_currency, destination_currency, amount_type, requested_amount,
                 fxp_id, base_rate, final_rate, tier_improvement_bps, psp_improvement_bps,
                 source_interbank_amount, destination_interbank_amount,
+                creditor_account_amount, destination_psp_fee,
                 capped_to_max_amount, expires_at, status
             ) VALUES (
                 :quote_id, :requesting_psp_bic, :source_country, :destination_country,
                 :source_currency, :destination_currency, :amount_type, :requested_amount,
                 :fxp_id, :base_rate, :final_rate, :tier_improvement_bps, :psp_improvement_bps,
                 :source_interbank_amount, :destination_interbank_amount,
+                :creditor_account_amount, :destination_psp_fee,
                 :capped_to_max_amount, :expires_at, 'ACTIVE'
             )
         """)
@@ -306,22 +389,27 @@ async def get_quotes(
             "requested_amount": amount,
             "fxp_id": row.fxp_id,
             "base_rate": base_rate,
-            "final_rate": final_rate,
+            "final_rate": customer_rate,
             "tier_improvement_bps": tier_improvement_bps,
             "psp_improvement_bps": psp_improvement_bps,
-            "source_interbank_amount": source_amount,
-            "destination_interbank_amount": dest_amount,
+            "source_interbank_amount": source_interbank_amount,
+            "destination_interbank_amount": dest_interbank_amount,
+            "creditor_account_amount": creditor_account_amount,
+            "destination_psp_fee": dest_psp_fee,
             "capped_to_max_amount": capped,
             "expires_at": expires_at,
         })
         
+        # Include ALL fee fields in response per Nexus spec
         quotes.append({
             "quoteId": str(quote_id),
             "fxpId": row.fxp_code,
             "fxpName": row.fxp_name,
-            "exchangeRate": str(final_rate.quantize(Decimal("0.00000001"))),
-            "sourceInterbankAmount": str(source_amount),
-            "destinationInterbankAmount": str(dest_amount),
+            "exchangeRate": str(customer_rate.quantize(Decimal("0.00000001"))),
+            "sourceInterbankAmount": str(source_interbank_amount),
+            "destinationInterbankAmount": str(dest_interbank_amount),
+            "creditorAccountAmount": str(creditor_account_amount),
+            "destinationPspFee": str(dest_psp_fee),
             "cappedToMaxAmount": capped,
             "expiresAt": expires_at.isoformat().replace("+00:00", "Z"),
         })

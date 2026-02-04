@@ -107,11 +107,11 @@ async def resolve_proxy(request: ProxyResolutionRequest, db: AsyncSession = Depe
         actor="SOURCE_PSP",
         correlation_id=correlation_id,
         data={
-            "rawXml": acmt023_xml, 
             "proxy": request.proxy_value, 
             "proxyType": request.proxy_type,
             "structuredData": request.structured_data
-        }
+        },
+        acmt023_xml=acmt023_xml  # Store in dedicated column for Message Observatory
     )
 
     # 2. Attempt DB lookup in proxy_registrations table
@@ -233,11 +233,11 @@ async def resolve_proxy(request: ProxyResolutionRequest, db: AsyncSession = Depe
         actor="NEXUS_PDO",
         correlation_id=correlation_id,
         data={
-            "rawXml": acmt024_xml, 
             "beneficiary": res_data.get("beneficiaryName", ""),
             "status": res_data["status"],
             "reasonCode": "BE23" if res_data["status"] == "NOT_FOUND" else None
-        }
+        },
+        acmt024_xml=acmt024_xml  # Store in dedicated column for Message Observatory
     )
 
     if res_data["status"] == "NOT_FOUND":
@@ -262,19 +262,26 @@ async def store_addressing_event(
     event_type: str,
     actor: str,
     correlation_id: str,
-    data: dict
+    data: dict,
+    acmt023_xml: str = None,
+    acmt024_xml: str = None
 ):
     """Store addressing event using correlation_id as UETR placeholder.
     
     Note: Addressing events (acmt.023/024) occur before payment initiation,
     so they don't have a real UETR. We use the correlation_id as a placeholder
     since payment_events table requires non-null UETR.
+    
+    The acmt023_xml and acmt024_xml are stored in dedicated columns for 
+    proper display in Payment Explorer's Messages tab.
     """
     query = text("""
         INSERT INTO payment_events (
-            event_id, uetr, event_type, actor, correlation_id, data, version, occurred_at
+            event_id, uetr, event_type, actor, correlation_id, data, version, occurred_at,
+            acmt023_message, acmt024_message
         ) VALUES (
-            gen_random_uuid(), :uetr, :event_type, :actor, :correlation_id, :data, 1, NOW()
+            gen_random_uuid(), :uetr, :event_type, :actor, :correlation_id, :data, 1, NOW(),
+            :acmt023_message, :acmt024_message
         )
     """)
     
@@ -284,6 +291,8 @@ async def store_addressing_event(
         "actor": actor,
         "correlation_id": correlation_id,
         "data": json.dumps(data),
+        "acmt023_message": acmt023_xml,
+        "acmt024_message": acmt024_xml,
     })
     await db.commit()
 

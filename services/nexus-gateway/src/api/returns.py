@@ -1,16 +1,18 @@
 """
-Payment Return and Recall Processing
+Payment Return and Recall Processing (FUTURE FEATURES)
 
 pacs.004 - PaymentReturn (Return payment initiated by Destination PSP)
 camt.056 - FI to FI Payment Cancellation Request (Recall initiated by Source PSP)
 
+> [!IMPORTANT] Nexus Release 1 Status (NotebookLM 2026-02-03):
+> - pacs.004 is NOT SUPPORTED in Release 1. Returns use new pacs.008 with NexusOrgnlUETR: prefix.
+> - camt.056 is NOT SUPPORTED in Release 1. Recalls use manual Nexus Service Desk workflow.
+> - These endpoints return 501 Not Implemented with guidance on Release 1 alternatives.
+
 Reference: https://docs.nexusglobalpayments.org/payment-processing
-NotebookLM Query 2026-02-03: 
-- Recall Request: Source PSP logs request in Nexus Service Desk (future camt.056)
-- Return Payment: Destination PSP initiates new pacs.008 back (future pacs.004)
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -140,75 +142,47 @@ return_payments = []
 @router.post(
     "/pacs004",
     response_model=Pacs004Response,
-    summary="Receive pacs.004 Payment Return",
+    summary="[FUTURE] pacs.004 Payment Return",
     description="""
-    **Process a Payment Return from Destination PSP**
+    **⚠️ NOT IMPLEMENTED IN NEXUS RELEASE 1**
     
-    Used when:
-    1. Destination PSP voluntarily returns a payment
-    2. Recall request (camt.056) was accepted
-    3. Account issues discovered post-credit (AC04, AC06)
-    4. Fraud detected post-credit (FRAD)
+    This endpoint returns 501 Not Implemented per Nexus Release 1 specification.
     
-    NotebookLM (2026-02-03): "If recall accepted, D-PSP initiates new pacs.008 
-    back to Source PSP. Future support for pacs.004 is planned."
+    ## Nexus Release 1 Alternative
     
-    ## Return Reason Codes
+    In Release 1, returns are processed using a **new pacs.008 payment** in the
+    reverse direction, referencing the original UETR in the remittance info:
     
-    | Code | Meaning |
-    |------|---------|
-    | FOCR | Following Cancellation Request (recall accepted) |
-    | CUST | Customer Request |
-    | DUPL | Duplicate Payment |
-    | FRAD | Fraud |
-    | AC04 | Closed Account |
-    | AC06 | Blocked Account |
+    ```xml
+    <AddtlRmtInf>NexusOrgnlUETR:91398cbd-0838-453f-b2c7-536e829f2b8e</AddtlRmtInf>
+    ```
+    
+    **Use POST /v1/iso20022/pacs008 instead** with the NexusOrgnlUETR prefix.
+    
+    NotebookLM (2026-02-03): "pacs.004 is not yet supported. Returns use new pacs.008."
     """
 )
 async def receive_pacs004(
     request: Pacs004Request,
+    response: Response,
     db: AsyncSession = Depends(get_db)
 ) -> Pacs004Response:
-    """Process incoming pacs.004 payment return."""
+    """Process incoming pacs.004 payment return - NOT IMPLEMENTED in Release 1."""
     
-    processed_at = datetime.now(timezone.utc)
+    # Return 501 Not Implemented per Nexus Release 1 spec
+    response.headers["X-Nexus-Feature-Status"] = "FUTURE"
+    response.headers["X-Nexus-Release"] = "Available in Release 2"
     
-    # 1. Validate original payment exists
-    original_check = await db.execute(
-        text("SELECT status FROM payments WHERE uetr = :uetr"),
-        {"uetr": request.originalUetr}
-    )
-    original = original_check.fetchone()
-    
-    if not original and original not in [None]:  # Sandbox: allow if not found
-        pass  # Allow for sandbox testing
-    
-    # 2. Record the return
-    return_record = {
-        "id": str(uuid4()),
-        "originalUetr": request.originalUetr,
-        "returnUetr": request.returnUetr,
-        "returnReasonCode": request.returnReasonCode.value,
-        "returnReasonText": request.returnReasonText,
-        "returnAmount": request.returnAmount,
-        "returnCurrency": request.returnCurrency,
-        "status": "INITIATED",
-        "createdAt": processed_at.isoformat(),
-    }
-    return_payments.append(return_record)
-    
-    # 3. If this was from a recall, update recall status
-    if request.originalUetr in pending_recalls:
-        pending_recalls[request.originalUetr]["status"] = RecallStatus.COMPLETED.value
-        pending_recalls[request.originalUetr]["completedAt"] = processed_at.isoformat()
-    
-    return Pacs004Response(
-        originalUetr=request.originalUetr,
-        returnUetr=request.returnUetr,
-        status="RETURN_INITIATED",
-        returnReasonCode=request.returnReasonCode.value,
-        message=f"Payment return initiated for {request.returnAmount} {request.returnCurrency}",
-        processedAt=processed_at.isoformat()
+    raise HTTPException(
+        status_code=501,
+        detail={
+            "error": "FEATURE_NOT_IMPLEMENTED",
+            "message": "pacs.004 PaymentReturn is not supported in Nexus Release 1.",
+            "alternative": "Use POST /v1/iso20022/pacs008 with NexusOrgnlUETR: prefix in remittance info",
+            "example": "<AddtlRmtInf>NexusOrgnlUETR:" + request.originalUetr + "</AddtlRmtInf>",
+            "reference": "https://docs.nexusglobalpayments.org/payment-processing/return-payments",
+            "release": "pacs.004 support planned for Nexus Release 2"
+        }
     )
 
 
@@ -219,86 +193,53 @@ async def receive_pacs004(
 @router.post(
     "/camt056",
     response_model=Camt056Response,
-    summary="Submit camt.056 Cancellation Request (Recall)",
+    summary="[FUTURE] camt.056 Cancellation Request (Recall)",
     description="""
-    **Initiate a Payment Recall Request**
+    **⚠️ NOT IMPLEMENTED IN NEXUS RELEASE 1**
     
-    Source PSP uses this to request return of a completed payment.
+    This endpoint returns 501 Not Implemented per Nexus Release 1 specification.
     
-    NotebookLM (2026-02-03): "If payment was made in error or fraud, Source PSP 
-    logs request in Nexus Service Desk (or future camt.056). D-PSP reviews and 
-    accepts/rejects."
+    ## Nexus Release 1 Alternative
     
-    ## Workflow
-    1. Source PSP submits camt.056
-    2. Nexus routes to Destination PSP
-    3. Destination PSP reviews (may require customer approval)
-    4. D-PSP responds with camt.029 (accept/reject)
-    5. If accepted, D-PSP initiates pacs.004 return
+    In Release 1, recall requests are **logged manually** in the Nexus Service Desk:
     
-    ## Cancellation Reason Codes
+    1. Source PSP logs "Payment Recall Request" in Nexus Service Desk
+    2. Destination PSP reviews within SLA
+    3. If accepted → Destination PSP initiates return via pacs.008
+    4. If rejected → Destination PSP provides reason code
     
-    | Code | Meaning |
-    |------|---------|
-    | CUST | Customer Request |
-    | DUPL | Duplicate Payment |
-    | FRAD | Fraudulent Origin |
-    | TECH | Technical Problem |
+    **Use the Service Desk portal** at `/service-desk` for manual recall workflow.
+    
+    NotebookLM (2026-02-03): "camt.056 is not implemented in Nexus Release 1.
+    Recalls are handled via manual Service Desk workflow."
     """
 )
 async def submit_camt056(
     request: Camt056Request,
+    response: Response,
     db: AsyncSession = Depends(get_db)
 ) -> Camt056Response:
-    """Submit a payment recall request."""
+    """Submit a payment recall request - NOT IMPLEMENTED in Release 1."""
     
-    submitted_at = datetime.now(timezone.utc)
-    recall_id = str(uuid4())[:8].upper()
+    # Return 501 Not Implemented per Nexus Release 1 spec
+    response.headers["X-Nexus-Feature-Status"] = "FUTURE"
+    response.headers["X-Nexus-Release"] = "Available in Release 2"
     
-    # 1. Check if payment exists and is eligible for recall
-    payment_check = await db.execute(
-        text("SELECT status FROM payments WHERE uetr = :uetr"),
-        {"uetr": request.originalUetr}
-    )
-    payment = payment_check.fetchone()
-    
-    # Active payments cannot be recalled (only completed)
-    if payment and payment.status not in ['COMPLETED', 'ACCC']:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Payment status {payment.status} not eligible for recall. Only COMPLETED payments can be recalled."
-        )
-    
-    # 2. Check for duplicate recall
-    if request.originalUetr in pending_recalls:
-        existing = pending_recalls[request.originalUetr]
-        if existing["status"] == RecallStatus.PENDING.value:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Recall already pending for UETR {request.originalUetr}"
-            )
-    
-    # 3. Create recall record
-    recall_record = {
-        "recallId": recall_id,
-        "originalUetr": request.originalUetr,
-        "cancellationReasonCode": request.cancellationReasonCode.value,
-        "cancellationReasonText": request.cancellationReasonText,
-        "requestedBy": request.requestedBy,
-        "recallType": request.recallType,
-        "originalAmount": request.originalAmount,
-        "status": RecallStatus.PENDING.value,
-        "submittedAt": submitted_at.isoformat(),
-    }
-    pending_recalls[request.originalUetr] = recall_record
-    
-    return Camt056Response(
-        originalUetr=request.originalUetr,
-        recallId=recall_id,
-        status=RecallStatus.PENDING,
-        recallType=request.recallType,
-        message="Recall request submitted. Awaiting Destination PSP review.",
-        submittedAt=submitted_at.isoformat()
+    raise HTTPException(
+        status_code=501,
+        detail={
+            "error": "FEATURE_NOT_IMPLEMENTED",
+            "message": "camt.056 Payment Cancellation Request is not supported in Nexus Release 1.",
+            "alternative": "Log a 'Payment Recall Request' in the Nexus Service Desk portal",
+            "workflow": [
+                "1. Navigate to /service-desk in the dashboard",
+                "2. Create a new Recall Request with the original UETR",
+                "3. Destination PSP reviews and accepts/rejects",
+                "4. If accepted, D-PSP initiates pacs.008 return payment"
+            ],
+            "reference": "https://docs.nexusglobalpayments.org/payment-processing/recall-requests",
+            "release": "camt.056 support planned for Nexus Release 2"
+        }
     )
 
 

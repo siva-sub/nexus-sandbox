@@ -106,7 +106,7 @@ async def generate_camt054(
     status: str = Query("ALL", description="Filter by status: ACCC, BLCK, RJCT, or ALL"),
     db: AsyncSession = Depends(get_db)
 ) -> Camt054Response:
-    """Generate camt.054 reconciliation report."""
+    """Generate camt.054 reconciliation report from real payment data."""
     now = datetime.now(timezone.utc)
     
     # Default period: last 24 hours
@@ -120,69 +120,94 @@ async def generate_camt054(
     else:
         start_dt = datetime.fromisoformat(period_start.replace('Z', '+00:00'))
     
-    # For sandbox: generate example data
-    # Production would query payments table with status filter
-    example_entries = [
-        TransactionEntry(
-            messageId="MSG202602030001",
-            instructionId="INS202602030001",
-            uetr="f47ac10b-58cc-4372-a567-0e02b2c3d479",
-            clearingSystemRef="NEXUS202602030001",
-            nexusFxQuoteId="QUOTE-SGD-THB-001",
-            transactionStatus="ACCC",
-            statusReasonCode=None,
-            debtorName="John Sender",
-            debtorAgent="DBSSSGSG",
-            creditorName="Somchai Recipient",
-            creditorAgent="KASITHBK",
-            amount="1000.00",
-            currency="SGD",
-            transactionDateTime=(now - timedelta(hours=2)).isoformat()
-        ),
-        TransactionEntry(
-            messageId="MSG202602030002",
-            instructionId="INS202602030002",
-            uetr="a47bc20c-58cc-4372-b567-1f02b2c3d480",
-            clearingSystemRef="NEXUS202602030002",
-            nexusFxQuoteId="QUOTE-SGD-MYR-001",
-            transactionStatus="ACCC",
-            statusReasonCode=None,
-            debtorName="Jane Sender",
-            debtorAgent="OCBCSGSG",
-            creditorName="Ahmad Recipient",
-            creditorAgent="MABORBB",
-            amount="500.00",
-            currency="SGD",
-            transactionDateTime=(now - timedelta(hours=5)).isoformat()
-        ),
-        TransactionEntry(
-            messageId="MSG202602030003",
-            instructionId="INS202602030003",
-            uetr="b48cd30d-68dd-5483-c678-2g13c3d4e581",
-            clearingSystemRef="NEXUS202602030003",
-            nexusFxQuoteId="QUOTE-SGD-PHP-001",
-            transactionStatus="RJCT",
-            statusReasonCode="AC04",  # Closed Account
-            debtorName="Mike Sender",
-            debtorAgent="UOVSSGSG",
-            creditorName="Maria Recipient",
-            creditorAgent="BDOEPHM1",
-            amount="200.00",
-            currency="SGD",
-            transactionDateTime=(now - timedelta(hours=8)).isoformat()
-        ),
-    ]
-    
-    # Filter by status if specified
+    # Query real payments from database
+    status_filter = ""
     if status != "ALL":
-        example_entries = [e for e in example_entries if e.transactionStatus == status]
+        status_filter = "AND status = :status"
     
-    # Calculate summary
-    success_count = sum(1 for e in example_entries if e.transactionStatus == "ACCC")
-    rejected_count = sum(1 for e in example_entries if e.transactionStatus == "RJCT")
-    blocked_count = sum(1 for e in example_entries if e.transactionStatus == "BLCK")
+    query = text(f"""
+        SELECT 
+            p.uetr::text,
+            p.quote_id,
+            p.status,
+            p.source_psp_bic as debtor_agent,
+            p.destination_psp_bic as creditor_agent,
+            p.debtor_name,
+            p.debtor_account,
+            p.creditor_name,
+            p.creditor_account,
+            p.source_amount::text as amount,
+            p.source_currency as currency,
+            p.created_at,
+            COALESCE(
+                (SELECT data->>'statusReasonCode' FROM payment_events 
+                 WHERE payment_events.uetr = p.uetr 
+                 AND event_type IN ('PAYMENT_REJECTED', 'PAYMENT_BLOCKED')
+                 ORDER BY created_at DESC LIMIT 1),
+                NULL
+            ) as status_reason_code
+        FROM payments p
+        WHERE p.created_at >= :start_dt
+        AND p.created_at <= :end_dt
+        AND p.status IN ('ACCC', 'RJCT', 'BLCK')
+        {status_filter}
+        ORDER BY p.created_at DESC
+        LIMIT 1000
+    """)
     
-    total_amount = sum(float(e.amount) for e in example_entries)
+    params = {"start_dt": start_dt, "end_dt": end_dt}
+    if status != "ALL":
+        params["status"] = status
+    
+    result = await db.execute(query, params)
+    rows = result.fetchall()
+    
+    # Build entries from real data
+    entries = []
+    for row in rows:
+        entries.append(TransactionEntry(
+            messageId=f"MSG-{row.uetr[:8]}",
+            instructionId=f"INS-{row.uetr[:8]}",
+            uetr=row.uetr,
+            clearingSystemRef=f"NEXUS-{row.uetr[:12]}",
+            nexusFxQuoteId=row.quote_id,
+            transactionStatus=row.status,
+            statusReasonCode=row.status_reason_code,
+            debtorName=row.debtor_name or "Unknown",
+            debtorAgent=row.debtor_agent or "UNKNOWN",
+            creditorName=row.creditor_name or "Unknown",
+            creditorAgent=row.creditor_agent or "UNKNOWN",
+            amount=row.amount or "0.00",
+            currency=row.currency or "XXX",
+            transactionDateTime=row.created_at.isoformat() if row.created_at else now.isoformat()
+        ))
+    
+    # If no real data found, include demo example
+    if len(entries) == 0:
+        entries.append(TransactionEntry(
+            messageId="MSG-DEMO-001",
+            instructionId="INS-DEMO-001",
+            uetr="00000000-0000-0000-0000-000000000000",
+            clearingSystemRef="NEXUS-DEMO-00000",
+            nexusFxQuoteId=None,
+            transactionStatus="ACCC",
+            statusReasonCode=None,
+            debtorName="(No payments in period)",
+            debtorAgent="XXXXX",
+            creditorName="(Run Interactive Demo to generate data)",
+            creditorAgent="XXXXX",
+            amount="0.00",
+            currency="SGD",
+            transactionDateTime=now.isoformat()
+        ))
+    
+    # Calculate summary from real data
+    success_count = sum(1 for e in entries if e.transactionStatus == "ACCC")
+    rejected_count = sum(1 for e in entries if e.transactionStatus == "RJCT")
+    blocked_count = sum(1 for e in entries if e.transactionStatus == "BLCK")
+    
+    total_amount = sum(float(e.amount) for e in entries if e.amount and e.amount != "0.00")
+    currency = entries[0].currency if entries else "SGD"
     
     return Camt054Response(
         messageId=f"CAMT054-{ips_operator_id}-{now.strftime('%Y%m%d%H%M%S')}",
@@ -191,15 +216,15 @@ async def generate_camt054(
         periodEnd=end_dt.isoformat(),
         ipsOperatorId=ips_operator_id,
         summary=TransactionSummary(
-            totalCount=len(example_entries),
+            totalCount=len(entries),
             totalAmount=f"{total_amount:.2f}",
-            currency="SGD",
+            currency=currency,
             netDebitCredit="DBIT" if total_amount > 0 else "CRDT",
             successCount=success_count,
             rejectedCount=rejected_count,
             blockedCount=blocked_count
         ),
-        entries=example_entries
+        entries=entries
     )
 
 

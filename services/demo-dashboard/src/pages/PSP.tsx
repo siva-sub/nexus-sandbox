@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
     Title,
     Card,
@@ -32,11 +32,7 @@ export function PSPPage() {
     const [loading, setLoading] = useState(true);
     const [countryFilter, setCountryFilter] = useState<string | null>(null);
 
-    useEffect(() => {
-        loadPSPs();
-    }, [countryFilter]);
-
-    const loadPSPs = async () => {
+    const loadPSPs = useCallback(async () => {
         setLoading(true);
         try {
             const data = await getPSPs(countryFilter || undefined);
@@ -49,7 +45,11 @@ export function PSPPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [countryFilter, selectedPSP]);
+
+    useEffect(() => {
+        loadPSPs();
+    }, [loadPSPs]);
 
     const selectedPSPData = psps.find((p) => p.bic === selectedPSP);
 
@@ -88,6 +88,42 @@ export function PSPPage() {
                     Learn more in Nexus Documentation →
                 </Anchor>
             </Alert>
+
+            {/* Live Metrics Summary */}
+            <SimpleGrid cols={{ base: 2, md: 4 }} spacing="md">
+                <Card withBorder p="md" radius="md">
+                    <Group justify="space-between">
+                        <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Total PSPs</Text>
+                        <IconBuilding size={20} color="var(--mantine-color-teal-6)" />
+                    </Group>
+                    <Text size="xl" fw={700} mt="xs">{psps.length}</Text>
+                    <Text size="xs" c="dimmed">Registered</Text>
+                </Card>
+                <Card withBorder p="md" radius="md">
+                    <Group justify="space-between">
+                        <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Countries</Text>
+                        <IconWorld size={20} color="var(--mantine-color-blue-6)" />
+                    </Group>
+                    <Text size="xl" fw={700} mt="xs">{new Set(psps.map(p => p.country_code)).size}</Text>
+                    <Text size="xs" c="dimmed">Markets covered</Text>
+                </Card>
+                <Card withBorder p="md" radius="md">
+                    <Group justify="space-between">
+                        <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Avg Fee</Text>
+                        <Badge size="sm" color="orange" variant="light">%</Badge>
+                    </Group>
+                    <Text size="xl" fw={700} mt="xs">{psps.length > 0 ? (psps.reduce((sum, p) => sum + p.fee_percent, 0) / psps.length).toFixed(2) : 0}</Text>
+                    <Text size="xs" c="dimmed">D-PSP fee rate</Text>
+                </Card>
+                <Card withBorder p="md" radius="md">
+                    <Group justify="space-between">
+                        <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Selected</Text>
+                        <Badge size="sm" color="teal" variant="light">Active</Badge>
+                    </Group>
+                    <Text size="xl" fw={700} mt="xs">{selectedPSP ? "1" : "0"}</Text>
+                    <Text size="xs" c="dimmed">PSP in view</Text>
+                </Card>
+            </SimpleGrid>
 
             {/* PSP Selection */}
             <SimpleGrid cols={{ base: 1, md: 2 }}>

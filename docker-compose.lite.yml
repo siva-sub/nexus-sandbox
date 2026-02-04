@@ -1,0 +1,102 @@
+# ============================================================================
+# Nexus Sandbox - LITE Profile (Fast Startup)
+# Use this for quick demos - starts in ~20 seconds vs 2+ minutes
+# ============================================================================
+#
+# Usage:
+#   docker compose -f docker-compose.lite.yml up
+#
+# Excluded services:
+#   - Kafka/Zookeeper (event streaming - not required for demo)
+#   - Jaeger (tracing - optional for demos)
+#   - PSP/IPS/FXP/SAP/PDO simulators (backend has mock implementations)
+#
+# ============================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nexus-postgres
+    environment:
+      POSTGRES_DB: nexus
+      POSTGRES_USER: nexus
+      POSTGRES_PASSWORD: nexus_sandbox_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U nexus -d nexus" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: nexus-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  nexus-gateway:
+    build:
+      context: ./services/nexus-gateway
+      dockerfile: Dockerfile
+    container_name: nexus-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://nexus:nexus_sandbox_password@postgres:5432/nexus
+      REDIS_URL: redis://redis:6379/0
+      # Kafka disabled in lite mode
+      KAFKA_ENABLED: "false"
+      # No tracing in lite mode
+      OTEL_ENABLED: "false"
+      JWT_SECRET: nexus-sandbox-jwt-secret-change-in-production
+      QUOTE_VALIDITY_SECONDS: 600
+      PAYMENT_TIMEOUT_SECONDS: 60
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  demo-dashboard:
+    build:
+      context: ./services/demo-dashboard
+      dockerfile: Dockerfile
+      target: production
+    container_name: nexus-demo
+    ports:
+      - "8080:80"
+    depends_on:
+      nexus-gateway:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:80/health" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+
+volumes:
+  postgres_data:
+  redis_data:

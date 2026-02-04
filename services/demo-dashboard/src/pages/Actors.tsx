@@ -80,9 +80,15 @@ export function ActorsPage() {
     const [modalOpen, setModalOpen] = useState(false);
 
     // Form state for new actor
-    const [newActor, setNewActor] = useState({
+    const [newActor, setNewActor] = useState<{
+        bic: string,
+        actorType: Actor["actorType"],
+        name: string,
+        countryCode: string,
+        callbackUrl: string,
+    }>({
         bic: "",
-        actorType: "PSP" as const,
+        actorType: "PSP",
         name: "",
         countryCode: "",
         callbackUrl: "",
@@ -450,7 +456,7 @@ export function ActorsPage() {
                             { value: "PDO", label: "Proxy Directory Operator" },
                         ]}
                         value={newActor.actorType}
-                        onChange={(v) => setNewActor({ ...newActor, actorType: v as any })}
+                        onChange={(v) => setNewActor({ ...newActor, actorType: v as Actor["actorType"] })}
                         required
                     />
                     <TextInput

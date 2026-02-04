@@ -27,20 +27,25 @@ Based on the official [Nexus Global Payments documentation](https://docs.nexusgl
 
 ## 🚀 Quick Start
 
-
+### Option A: Full Stack (12 services, ~2 min startup)
 ```bash
-# Start all services
 docker compose up -d
-
-# Check the Usage Guide for simulation steps
-# ./docs/USAGE_GUIDE.md
 ```
+
+### Option B: Lite Profile (4 services, ~20 sec startup)
+```bash
+# Fastest way to see the demo - no Kafka, just essentials
+docker compose -f docker-compose.lite.yml up -d
+```
+
+**Access the demo:** http://localhost:8080 → Click **"Quick Demo"** button for instant payment flow!
 
 ### 📖 Documentation Links
 - [**Usage Guide**](./docs/USAGE_GUIDE.md): Start here to simulate your first payment.
 - [**Integration Guide**](./docs/INTEGRATION_GUIDE.md): Connect your own PSP/FXP/IPS to the sandbox.
-- [**API Reference**](./docs/API_REFERENCE.md): Complete list of available endpoints.
-- [**Walkthrough**](./docs/assumptions/12_hardcoding_review.md): Detailed implementation log of the latest release.
+- [**API Reference**](./docs/api/API_REFERENCE.md): Complete list of available endpoints.
+- [**Message Examples**](./docs/MESSAGE_EXAMPLES.md): Full ISO 20022 XML samples for all 11 types.
+- [**Walkthrough**](./docs/E2E_DEMO_SCRIPT.md): Detailed end-to-end demo implementation walkthrough.
 
 ---
 
@@ -112,26 +117,64 @@ docker compose up -d
 
 ## 📊 Demo Dashboard Screens
 
-### 1. Landing Page
+### 1. Interactive Demo (⭐ Featured)
+**Fully End-to-End Functional** - `http://localhost:8080/demo`
+- ✅ **Real ISO 20022 XML Submission**: Constructs valid pacs.008.001.08 XML and submits to backend API
+- ✅ **Database Persistence**: All payments (ACCC + RJCT) stored in PostgreSQL
+- ✅ **Payment Explorer Integration**: Full UETR with "View in Explorer" link
+- ✅ **4-Step Guided Journey**:
+  1. **Payment Details**: Source/destination countries, amount type, recipient proxy
+  2. **Select Quote**: Display quotes from FXPs with exchange rates and expiry countdown
+  3. **Confirm Payment**: Pre-Transaction Disclosure (PTD) breakdown with fee transparency
+  4. **Lifecycle Trace**: Visual timeline showing payment journey (happy or rejection)
+- ✅ **9 Unhappy Flow Scenarios**: AB04, TM01, DUPL, AM04, AM02, BE23, AC04, RR04
+- ✅ **Demo Data Management**: Purge test payments via Settings page
+
+### 2. Payment Explorer
+**Transaction History & Message Viewer** - `http://localhost:8080/explorer`
+- Search by UETR to view complete payment details
+- 17-step lifecycle visualization
+- ISO 20022 message inspection (pacs.008, pacs.002 XML)
+- Status tracking with reason codes (ACCC, RJCT, AB04, TM01, etc.)
+- Debug panel with event timeline
+
+### 3. Landing Page
 - Overview of Nexus architecture
 - Key statistics and capabilities
 - Quick navigation to all features
 
-### 2. Actors & Fees
+### 4. Actors & Fees
 - All 13 participant types explained
 - Fee structure visualization
-- Competitive FX model diagram
+- **ISO 20022 Protocol Parity**: High-fidelity support for 11 distinct message types across the payment lifecycle.
+- **Message Observatory**: Every XML payload (pacs.008, pacs.002, acmt.023/024, etc.) is persisted and available for forensic audit.
+- **Compliance Validation**: Real-time XSD schema validation for all inbound and outbound messages.
 
-### 3. Send Payment
-- **Dynamic Address Forms**: Automatically generated inputs based on country-specific types (e.g., ACCT, MBNO).
-- **Real-time Quoting**: Fee transparency and FX rate aggregation.
-- **17-Step Lifecycle**: Complete observability of Step 1 to Step 17 (Confirmation).
-- **ISO 20022 Messages**: Visualization of acmt.023/024 and pacs.008/002 flows.
+---
 
-### 4. ISO Messages
-- 10+ message types documented
-- Message flow patterns
-- Status reason codes
+## 🏗 Supported ISO 20022 Messages
+
+The Nexus Sandbox implements **full protocol parity** for the following message sets. Refer to the [**Message Examples Guide**](./docs/MESSAGE_EXAMPLES.md) for full XML payloads.
+
+### 🔹 Release 1 (Core Flow)
+- `pacs.008` - FI to FI Customer Credit Transfer (Payment Instruction)
+- `pacs.002` - Payment Status Report (Acceptance/Rejection)
+- `acmt.023` - Identification Verification Request (Proxy Resolution)
+- `acmt.024` - Identification Verification Report
+- `camt.054` - Bank to Customer Debit Credit Notification (Reconciliation)
+
+### 🔸 Optional (SAP Integration)
+- `camt.103` - Create Reservation (Liquidity Reservation at SAP)
+- `pain.001` - Customer Credit Transfer Initiation (Corporate Channel Initiation)
+
+### 🚀 Future Roadmap (Forensic Persistence)
+- `pacs.004` - Payment Return
+- `pacs.028` - FI to FI Payment Status Request
+- `camt.056` - FI to FI Payment Cancellation Request (Recall)
+- `camt.029` - Resolution of Investigation (Recall Response)
+- **Complete ISO 20022 Coverage**: 
+  - 100 XSD schemas in `specs/iso20022/`
+  - Includes: pain.*, camt.*, acmt.*, pacs.*
 
 ---
 
@@ -229,7 +272,8 @@ nexus-sandbox/
 | **Cache** | Redis 7 |
 | **Messaging** | Apache Kafka |
 | **Tracing** | Jaeger, OpenTelemetry |
-| **Frontend** | HTML5, Tailwind CSS, Vanilla JS |
+| **Frontend** | React 19, TypeScript, Mantine UI v7, Vite |
+| **ISO 20022** | 100 XSD schemas (pacs.*, acmt.*, camt.*, pain.*) |
 | **Container** | Docker, Docker Compose |
 
 ---

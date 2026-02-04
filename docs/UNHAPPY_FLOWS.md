@@ -160,11 +160,11 @@ Rejection occurs → pacs.002 RJCT flows backward
 | RR04 (Regulatory block) | ✅ Implemented | Trigger value: +62999999999 |
 | RC11 (Invalid SAP) | ✅ Implemented | SAP mismatch in validation |
 | DUPL (Duplicate) | ✅ Implemented | Duplicate UETR check |
-| Returns via pacs.008 | ❌ Not implemented | Future work |
-| Recall via Service Desk | ❌ Not implemented | Future work |
-| camt.056 automation | ❌ Not implemented | Per spec |
-| pacs.004 returns | ❌ Not implemented | Per spec |
-| Disputes portal | ❌ Not implemented | Future work |
+| Returns via pacs.008 | ✅ Implemented | `NexusOrgnlUETR:` prefix parsing in iso20022.py |
+| Recall via Service Desk | ✅ Implemented | Mock portal at `/service-desk` |
+| Disputes Portal | ✅ Implemented | Mock portal at `/service-desk` |
+| camt.056 automation | 🔮 Release 2 | Returns 501 with guidance (per Nexus Release 1 spec) |
+| pacs.004 returns | 🔮 Release 2 | Returns 501 with guidance (per Nexus Release 1 spec) |
 
 ## 5. Test Trigger Values
 

@@ -63,11 +63,14 @@ async def get_payment_messages(
     """
     Get raw ISO 20022 XML messages for a transaction.
     
-    Returns the actual pacs.008 and pacs.002 XML payloads for debugging.
-    Reference: ADR-011 - Developer Observability
+    Returns all available message types including Release 1, Optional SAP, and Future messages.
+    Reference: ADR-011 - Developer Observability, ADR-013 - E2E Demo Integration
     """
     query = text("""
-        SELECT event_type, pacs008_message, pacs002_message, occurred_at
+        SELECT event_type, occurred_at,
+               pacs008_message, pacs002_message, acmt023_message, acmt024_message,
+               camt054_message, camt103_message, pain001_message,
+               pacs004_message, pacs028_message, camt056_message, camt029_message
         FROM payment_events 
         WHERE uetr = :uetr 
         ORDER BY occurred_at ASC
@@ -76,28 +79,34 @@ async def get_payment_messages(
     result = await db.execute(query, {"uetr": uetr})
     messages = []
     
+    # Message type definitions
+    message_types = {
+        "pacs008_message": ("pacs.008", "outbound", "FI to FI Customer Credit Transfer (Payment Instruction)"),
+        "pacs002_message": ("pacs.002", "inbound", "Payment Status Report (Acceptance/Rejection)"),
+        "acmt023_message": ("acmt.023", "outbound", "Identification Verification Request (Proxy Resolution)"),
+        "acmt024_message": ("acmt.024", "inbound", "Identification Verification Report"),
+        "camt054_message": ("camt.054", "inbound", "Bank to Customer Debit Credit Notification (Reconciliation)"),
+        "camt103_message": ("camt.103", "outbound", "Create Reservation (SAP Integration Method 2a)"),
+        "pain001_message": ("pain.001", "outbound", "Customer Credit Transfer Initiation (SAP Integration Method 3)"),
+        "pacs004_message": ("pacs.004", "outbound", "Payment Return (Future - Release 2)"),
+        "pacs028_message": ("pacs.028", "outbound", "FI to FI Payment Status Request (Future - Release 2)"),
+        "camt056_message": ("camt.056", "outbound", "FI to FI Payment Cancellation Request (Recall - Future)"),
+        "camt029_message": ("camt.029", "inbound", "Resolution of Investigation (Recall Response - Future)"),
+    }
+    
     for row in result.fetchall():
         msg = dict(row._mapping)
         
-        # Include pacs.008 if present
-        if msg.get("pacs008_message"):
-            messages.append({
-                "messageType": "pacs.008",
-                "direction": "outbound",
-                "description": "FI to FI Customer Credit Transfer",
-                "xml": msg["pacs008_message"],
-                "timestamp": str(msg["occurred_at"]) if msg.get("occurred_at") else None
-            })
-        
-        # Include pacs.002 if present
-        if msg.get("pacs002_message"):
-            messages.append({
-                "messageType": "pacs.002",
-                "direction": "inbound",
-                "description": "Payment Status Report",
-                "xml": msg["pacs002_message"],
-                "timestamp": str(msg["occurred_at"]) if msg.get("occurred_at") else None
-            })
+        # Check each message type
+        for column, (msg_type, direction, description) in message_types.items():
+            if msg.get(column):
+                messages.append({
+                    "messageType": msg_type,
+                    "direction": direction,
+                    "description": description,
+                    "xml": msg[column],
+                    "timestamp": str(msg["occurred_at"]) if msg.get("occurred_at") else None
+                })
     
     return {
         "uetr": uetr,

@@ -1,0 +1,28 @@
+{
+  "name": "nexus-global-payments-sandbox",
+  "version": "1.0.0",
+  "description": "> **A complete educational sandbox implementation of the Nexus Global Payments scheme**",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/siva-sub/nexus-sandbox.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/siva-sub/nexus-sandbox/issues"
+  },
+  "homepage": "https://github.com/siva-sub/nexus-sandbox#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.58.1",
+    "playwright": "^1.58.1"
+  }
+}

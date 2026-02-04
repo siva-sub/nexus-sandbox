@@ -20,7 +20,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
-from src.api import countries, quotes, rates, fees, health, currencies, fin_insts, fee_formulas, iso20022, address_types, relationships, intermediary_agents, pacs002, reconciliation, liquidity, returns, qr, addressing, payments_explorer, actors, psp, ips, pdo
+from src.api import countries, quotes, rates, fees, health, currencies, fin_insts, fee_formulas, iso20022, address_types, relationships, intermediary_agents, pacs002, reconciliation, liquidity, returns, qr, addressing, payments_explorer, actors, psp, ips, pdo, demo_data
 from src.config import settings
 from src.db import database
 from src.observability import setup_tracing
@@ -357,6 +357,13 @@ app.include_router(
 app.include_router(
     pdo.router,
     tags=["Proxy Directory Operators"],
+)
+
+# Demo Data Management (test data cleanup)
+app.include_router(
+    demo_data.router,
+    prefix="/v1/demo-data",
+    tags=["Demo Data"],
 )
 
 

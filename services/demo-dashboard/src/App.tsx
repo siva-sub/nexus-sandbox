@@ -9,6 +9,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { theme } from "./theme";
 import { AppLayout } from "./components/Layout/AppLayout";
 import { PaymentPage } from "./pages/Payment";
+import { PaymentDemo } from "./pages/PaymentDemo";
 import { FXPPage } from "./pages/FXP";
 import { SAPPage } from "./pages/SAP";
 import { MessagesPage } from "./pages/Messages";
@@ -20,6 +21,8 @@ import { IPSPage } from "./pages/IPS";
 import { PDOPage } from "./pages/PDO";
 import { PaymentsExplorer } from "./pages/PaymentsExplorer";
 import { UnhappyFlowsDemo } from "./pages/UnhappyFlowsDemo";
+import { ServiceDesk } from "./pages/ServiceDesk";
+import { InteractiveDemo } from "./pages/InteractiveDemo";
 
 
 function App() {
@@ -31,7 +34,10 @@ function App() {
           <Route path="/" element={<AppLayout />}>
             <Route index element={<Navigate to="/payment" replace />} />
             <Route path="payment" element={<PaymentPage />} />
-            <Route path="demo" element={<UnhappyFlowsDemo />} />
+            <Route path="payment-demo" element={<PaymentDemo />} />
+            <Route path="demo" element={<InteractiveDemo />} />
+            <Route path="unhappy-flows" element={<UnhappyFlowsDemo />} />
+            <Route path="service-desk" element={<ServiceDesk />} />
             <Route path="fxp" element={<FXPPage />} />
             <Route path="sap" element={<SAPPage />} />
             <Route path="psp" element={<PSPPage />} />
