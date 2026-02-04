@@ -3,6 +3,7 @@
 > **A complete educational sandbox implementation of the Nexus Global Payments scheme**
 
 [![Demo Dashboard](https://img.shields.io/badge/Demo-Dashboard-blue)](http://localhost:8080)
+[![Live Demo (Static)](https://img.shields.io/badge/Live_Demo-GitHub_Pages-orange)](https://siva-sub.github.io/nexus-sandbox/)
 [![API Docs](https://img.shields.io/badge/API-Docs-green)](http://localhost:8000/docs)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -67,7 +68,8 @@ docker compose -f docker-compose.lite.yml up -d
 
 | Service | URL | Description |
 |---------|-----|-------------|
-| **Demo Dashboard** | http://localhost:8080 | Interactive UI with payment demos |
+| **Local Dashboard** | http://localhost:8080 | Interactive UI (local Docker) |
+| **Live Demo** | [nexus-sandbox/pages](https://siva-sub.github.io/nexus-sandbox/) | Static preview (GitHub Pages) |
 | **API Docs (ReDoc)** | http://localhost:8080/api/redoc | Beautiful API documentation |
 | **API Docs (Swagger)** | http://localhost:8080/api/docs | Interactive API explorer |
 | **Jaeger Tracing** | http://localhost:16686 | Distributed tracing UI (full stack only) |
