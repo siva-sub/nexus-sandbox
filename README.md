@@ -59,9 +59,9 @@ docker compose -f docker-compose.lite.yml up -d
 
 Watch the **Quick Flow** in action - a full end-to-end payment simulation in under 30 seconds.
 
-https://github.com/user-attachments/assets/demo-recording.webm
+https://github.com/user-attachments/assets/demo-quick-flow.mp4
 
-<video src="./docs/assets/demo-recording.webm" controls width="100%" title="Nexus Sandbox Quick Flow Demo"></video>
+<video src="./docs/assets/demo-quick-flow.mp4" controls width="100%" title="Nexus Sandbox Quick Flow Demo"></video>
 
 ### 📖 Documentation Links
 - [**Usage Guide**](./docs/USAGE_GUIDE.md): Start here to simulate your first payment.
