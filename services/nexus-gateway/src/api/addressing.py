@@ -25,23 +25,7 @@ router = APIRouter(prefix="/v1", tags=["Addressing"])
 # Models
 # =============================================================================
 
-class ProxyResolutionRequest(BaseModel):
-    """acmt.023 Identification Verification Request"""
-    proxy_type: str = Field(..., alias="proxyType", description="Type of proxy (MBNO, EMAL, NRPN, ACCT)")
-    proxy_value: str = Field(..., alias="proxyValue", description="The primary proxy value or account number")
-    destination_country: str = Field(..., alias="destinationCountry", description="ISO 3166-1 alpha-2 country code")
-    structured_data: Optional[dict] = Field(None, alias="structuredData", description="Additional fields (e.g. bankCode/BIC for ACCT type)")
-
-class ProxyResolutionResponse(BaseModel):
-    """acmt.024 Identification Verification Report"""
-    resolution_id: str = Field(..., alias="resolutionId")
-    account_number: str = Field(..., alias="accountNumber")
-    account_type: str = Field(..., alias="accountType")
-    agent_bic: str = Field(..., alias="agentBic")
-    beneficiary_name: str = Field(..., alias="beneficiaryName")
-    display_name: Optional[str] = Field(None, alias="displayName")
-    status: str = Field(..., description="VALIDATED or NOT_FOUND")
-    timestamp: str
+from .schemas import ProxyResolutionRequest, ProxyResolutionResponse
 
 # =============================================================================
 # Endpoints

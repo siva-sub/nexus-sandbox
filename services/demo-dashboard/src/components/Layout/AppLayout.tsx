@@ -30,6 +30,7 @@ import {
     IconApi,
     IconExternalLink,
     IconReportAnalytics,
+    IconHome,
 } from "@tabler/icons-react";
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { checkHealth } from "../../services/api";
@@ -44,6 +45,12 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
+    {
+        icon: IconHome,
+        label: "Home",
+        path: "/",
+        description: "Overview & Features",
+    },
     {
         icon: IconSend,
         label: "Send Payment",
@@ -153,9 +160,11 @@ export function AppLayout() {
                 <Group h="100%" px="md" justify="space-between">
                     <Group>
                         <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
-                        <Title order={3} c="nexusPurple">
-                            🌐 NEXUS SANDBOX
-                        </Title>
+                        <Link to="/" style={{ textDecoration: 'none' }}>
+                            <Title order={3} c="nexusPurple">
+                                🌐 NEXUS SANDBOX
+                            </Title>
+                        </Link>
                         <Badge variant="light" color="nexusPurple" size="sm">
                             Demo
                         </Badge>

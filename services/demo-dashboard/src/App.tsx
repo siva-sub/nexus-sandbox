@@ -4,7 +4,7 @@ import "@mantine/code-highlight/styles.css";
 
 import { MantineProvider } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
-import { HashRouter, BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { HashRouter, BrowserRouter, Routes, Route } from "react-router-dom";
 
 import { theme } from "./theme";
 import { AppLayout } from "./components/Layout/AppLayout";
@@ -12,8 +12,8 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { MOCK_ENABLED } from "./services/mockData";
 
 const Router = MOCK_ENABLED ? HashRouter : BrowserRouter;
+import { LandingPage } from "./pages/LandingPage";
 import { PaymentPage } from "./pages/Payment";
-import { PaymentDemo } from "./pages/PaymentDemo";
 import { FXPPage } from "./pages/FXP";
 import { SAPPage } from "./pages/SAP";
 import { MessagesPage } from "./pages/Messages";
@@ -24,7 +24,6 @@ import { PSPPage } from "./pages/PSP";
 import { IPSPage } from "./pages/IPS";
 import { PDOPage } from "./pages/PDO";
 import { PaymentsExplorer } from "./pages/PaymentsExplorer";
-import { UnhappyFlowsDemo } from "./pages/UnhappyFlowsDemo";
 import { ServiceDesk } from "./pages/ServiceDesk";
 import { InteractiveDemo } from "./pages/InteractiveDemo";
 
@@ -37,11 +36,9 @@ function App() {
         <ErrorBoundary>
           <Routes>
             <Route path="/" element={<AppLayout />}>
-              <Route index element={<Navigate to="/payment" replace />} />
+              <Route index element={<LandingPage />} />
               <Route path="payment" element={<PaymentPage />} />
-              <Route path="payment-demo" element={<PaymentDemo />} />
               <Route path="demo" element={<InteractiveDemo />} />
-              <Route path="unhappy-flows" element={<UnhappyFlowsDemo />} />
               <Route path="service-desk" element={<ServiceDesk />} />
               <Route path="fxp" element={<FXPPage />} />
               <Route path="sap" element={<SAPPage />} />

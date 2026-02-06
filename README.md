@@ -302,9 +302,10 @@ curl -X POST http://localhost:8000/v1/actors/register \
 - Status tracking with reason codes (ACCC, RJCT, AB04, TM01, etc.)
 - Debug panel with event timeline
 
-### 3. Landing Page
-- Overview of Nexus architecture
-- Key statistics and capabilities
+### 3. Global Payment Dashboard (Landing Page)
+- **Main entry point** - This is the home page of the sandbox
+- Overview of Nexus architecture and available corridors
+- Direct access to interactive payment demos
 - Quick navigation to all features
 
 ### 4. Actors & Fees

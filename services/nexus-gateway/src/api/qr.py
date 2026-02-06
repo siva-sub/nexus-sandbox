@@ -24,7 +24,6 @@ Key Tags:
 """
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 from typing import Optional
 from decimal import Decimal
 
@@ -35,121 +34,22 @@ router = APIRouter(prefix="/v1/qr", tags=["QR Codes"])
 # Pydantic Models
 # =============================================================================
 
-class QRParseRequest(BaseModel):
-    """Request to parse an EMVCo QR string."""
-    qrData: str
-
-
-class MerchantAccountInfo(BaseModel):
-    """Parsed merchant account information."""
-    scheme: str  # PAYNOW, PROMPTPAY, QRPH, DUITNOW, etc.
-    proxyType: Optional[str] = None  # MBNO, ACCT, UEN, etc.
-    proxyValue: Optional[str] = None
-    editable: bool = False  # Whether amount can be modified
-
-
-class QRParseResponse(BaseModel):
-    """Response from QR parsing."""
-    formatIndicator: str
-    initiationType: str  # STATIC or DYNAMIC
-    merchantAccountInfo: MerchantAccountInfo
-    merchantCategoryCode: Optional[str] = None
-    transactionCurrency: Optional[str] = None
-    transactionCurrencyCode: Optional[str] = None
-    transactionAmount: Optional[str] = None
-    countryCode: Optional[str] = None
-    merchantName: Optional[str] = None
-    merchantCity: Optional[str] = None
-    additionalData: Optional[dict] = None
-    crc: str
-    crcValid: bool
-    rawTags: dict  # All parsed tags for debugging
-
-
-class QRGenerateRequest(BaseModel):
-    """Request to generate an EMVCo QR string."""
-    scheme: str  # PAYNOW, PROMPTPAY, QRPH, DUITNOW
-    proxyType: str  # MOBILE, UEN, NRIC, ACCOUNT
-    proxyValue: str
-    amount: Optional[Decimal] = None
-    merchantName: Optional[str] = None
-    merchantCity: Optional[str] = None
-    reference: Optional[str] = None
-    editable: bool = True
-
-
-class QRGenerateResponse(BaseModel):
-    """Response with generated QR string."""
-    qrData: str
-    scheme: str
-
-
-class QRValidateRequest(BaseModel):
-    """Request to validate an EMVCo QR string."""
-    qrData: str
-
-
-class QRValidateResponse(BaseModel):
-    """Response from QR validation."""
-    valid: bool
-    crcValid: bool
-    formatValid: bool
-    errors: list[str]
-
-
-# =============================================================================
-# UPI QR Models (NPCI India)
-# =============================================================================
-
-class UPIQRData(BaseModel):
-    """Parsed UPI QR data structure."""
-    pa: str  # Payee VPA (Virtual Payment Address)
-    pn: Optional[str] = None  # Payee Name
-    am: Optional[str] = None  # Amount
-    cu: str = "INR"  # Currency (always INR)
-    tr: Optional[str] = None  # Transaction Reference ID
-    tn: Optional[str] = None  # Transaction Note
-    mc: Optional[str] = None  # Merchant Category Code
-    mid: Optional[str] = None  # Merchant ID
-    url: Optional[str] = None  # URL for bill/order details
-    mode: Optional[str] = None  # Mode (e.g., "05" for secure intent)
-
-
-class UPIParseRequest(BaseModel):
-    """Request to parse a UPI QR URI."""
-    upiUri: str
-
-
-class UPIParseResponse(BaseModel):
-    """Response from UPI parsing."""
-    valid: bool
-    data: Optional[UPIQRData] = None
-    error: Optional[str] = None
-
-
-class UPIToEMVCoRequest(BaseModel):
-    """Request to convert UPI to EMVCo/BharatQR format."""
-    upiUri: str
-    merchantCity: Optional[str] = "INDIA"
-
-
-class UPIToEMVCoResponse(BaseModel):
-    """Response with EMVCo/BharatQR string."""
-    emvcoData: str
-    scheme: str = "BHARATQR"
-    sourceFormat: str = "UPI"
-
-
-class EMVCoToUPIRequest(BaseModel):
-    """Request to convert EMVCo/BharatQR to UPI format."""
-    emvcoData: str
-
-
-class EMVCoToUPIResponse(BaseModel):
-    """Response with UPI URI string."""
-    upiUri: str
-    scheme: str = "UPI"
-    sourceFormat: str = "EMVCO"
+from .schemas import (
+    QRParseRequest,
+    MerchantAccountInfo,
+    QRParseResponse,
+    QRGenerateRequest,
+    QRGenerateResponse,
+    QRValidateRequest,
+    QRValidateResponse,
+    UPIQRData,
+    UPIParseRequest,
+    UPIParseResponse,
+    UPIToEMVCoRequest,
+    UPIToEMVCoResponse,
+    EMVCoToUPIRequest,
+    EMVCoToUPIResponse
+)
 
 
 # =============================================================================

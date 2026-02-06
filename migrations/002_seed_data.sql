@@ -200,7 +200,18 @@ INSERT INTO address_types (country_code, code, display_name, requires_proxy_reso
     ('MY', 'NRIC', 'MyKad Number (DuitNow)', true, 'MYDUITMYK'),
     ('MY', 'BIZN', 'Business Registration (DuitNow)', true, 'MYDUITMYK'),
     ('MY', 'PASS', 'Passport Number (DuitNow)', true, 'MYDUITMYK'),
-    ('MY', 'ACCT', 'Bank Account Number', false, 'MYDUITMYK');
+    ('MY', 'ACCT', 'Bank Account Number', false, 'MYDUITMYK'),
+    
+    -- Indonesia (BI-FAST)
+    ('ID', 'MBNO', 'Mobile Number (BI-FAST)', true, 'IDFASTID'),
+    ('ID', 'EMAL', 'Email Address (BI-FAST)', true, 'IDFASTID'),
+    ('ID', 'NIK', 'National ID (NIK)', true, 'IDFASTID'),
+    ('ID', 'ACCT', 'Bank Account Number', false, 'IDFASTID'),
+    
+    -- India (UPI)
+    ('IN', 'MBNO', 'Mobile Number (UPI)', true, 'INUPINPC'),
+    ('IN', 'VPA', 'Virtual Payment Address (VPA)', true, 'INUPINPC'),
+    ('IN', 'ACCT', 'Bank Account Number', false, 'INUPINPC');
 
 -- =============================================================================
 -- FX RATES (Sample rates)
@@ -261,13 +272,13 @@ INSERT INTO proxy_registrations (country_code, proxy_type, proxy_value, creditor
     ('PH', 'MOBI', '+639123456789', 'Juan dela Cruz', 'Ju** de** Cr**', 'PH1234567890', 'BABORPMM', 'BDO Unibank'),
     
     -- Indonesia test mobiles (BI-FAST)
-    ('ID', 'MBNO', '6281234567890', 'Budi Santoso', 'Bu** Sa***so', 'ID1234567890123456', 'BMRIIDJA', 'Bank Mandiri'),
-    ('ID', 'MBNO', '6289876543210', 'Siti Nurhaliza', 'Si** Nu***za', 'ID9876543210987654', 'BCAIIDJA', 'Bank Central Asia'),
+    ('ID', 'MBNO', '+6281234567890', 'Budi Santoso', 'Bu** Sa***so', 'ID1234567890123456', 'BMRIIDJA', 'Bank Mandiri'),
+    ('ID', 'MBNO', '+6289876543210', 'Siti Nurhaliza', 'Si** Nu***za', 'ID9876543210987654', 'BCAIIDJA', 'Bank Central Asia'),
     ('ID', 'EMAL', 'budi@example.co.id', 'Budi Hartono', 'Bu** Ha***no', 'ID5555666677778888', 'BMRIIDJA', 'Bank Mandiri'),
     
     -- India test mobiles (UPI)
-    ('IN', 'MBNO', '919123456789', 'Rajesh Kumar', 'Ra***h Ku***r', 'IN12345678901234', 'SBININBB', 'State Bank of India'),
-    ('IN', 'MBNO', '919876543210', 'Priya Sharma', 'Pr*** Sh***a', 'IN98765432109876', 'HABORINB', 'HDFC Bank');
+    ('IN', 'MBNO', '+919123456789', 'Rajesh Kumar', 'Ra***h Ku***r', 'IN12345678901234', 'SBININBB', 'State Bank of India'),
+    ('IN', 'MBNO', '+919876543210', 'Priya Sharma', 'Pr*** Sh***a', 'IN98765432109876', 'HABORINB', 'HDFC Bank');
 
 -- =============================================================================
 -- API CLIENTS (for OAuth)

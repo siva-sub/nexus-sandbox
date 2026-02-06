@@ -14,7 +14,6 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 from datetime import datetime, timezone, timedelta
-from pydantic import BaseModel
 from ..db import get_db
 
 router = APIRouter(prefix="/v1/reconciliation", tags=["Reconciliation"])
@@ -24,44 +23,7 @@ router = APIRouter(prefix="/v1/reconciliation", tags=["Reconciliation"])
 # Pydantic Models for camt.054 Response
 # =============================================================================
 
-class TransactionEntry(BaseModel):
-    """Individual transaction entry in camt.054."""
-    messageId: str
-    instructionId: str
-    uetr: str
-    clearingSystemRef: str
-    nexusFxQuoteId: Optional[str] = None
-    transactionStatus: str  # ACCC, BLCK, RJCT
-    statusReasonCode: Optional[str] = None
-    debtorName: str
-    debtorAgent: str  # BIC
-    creditorName: str
-    creditorAgent: str  # BIC
-    amount: str
-    currency: str
-    transactionDateTime: str
-
-
-class TransactionSummary(BaseModel):
-    """Summary of transactions in the report."""
-    totalCount: int
-    totalAmount: str
-    currency: str
-    netDebitCredit: str  # DBIT or CRDT
-    successCount: int
-    rejectedCount: int
-    blockedCount: int
-
-
-class Camt054Response(BaseModel):
-    """camt.054 Bank to Customer Debit/Credit Notification."""
-    messageId: str
-    creationDateTime: str
-    periodStart: str
-    periodEnd: str
-    ipsOperatorId: str
-    summary: TransactionSummary
-    entries: list[TransactionEntry]
+from .schemas import TransactionEntry, TransactionSummary, Camt054Response
 
 
 # =============================================================================

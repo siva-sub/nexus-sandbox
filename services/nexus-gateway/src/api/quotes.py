@@ -16,7 +16,6 @@ from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
-from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -75,55 +74,12 @@ def _calculate_scheme_fee(principal: Decimal) -> Decimal:
 # Response Models
 # =============================================================================
 
-class QuoteInfo(BaseModel):
-    """
-    Individual FX quote from an FXP.
-    
-    Reference: https://docs.nexusglobalpayments.org/fx-provision/quotes
-    """
-    quote_id: str = Field(alias="quoteId")
-    fxp_id: str = Field(alias="fxpId")
-    fxp_name: str = Field(alias="fxpName")
-    exchange_rate: str = Field(alias="exchangeRate")
-    source_interbank_amount: str = Field(alias="sourceInterbankAmount")
-    destination_interbank_amount: str = Field(alias="destinationInterbankAmount")
-    creditor_account_amount: str | None = Field(alias="creditorAccountAmount", default=None)
-    destination_psp_fee: str | None = Field(alias="destinationPspFee", default=None)
-    capped_to_max_amount: bool = Field(alias="cappedToMaxAmount")
-    expires_at: str = Field(alias="expiresAt")
-    
-    class Config:
-        populate_by_name = True
-
-
-class QuotesResponse(BaseModel):
-    """Response from GET /quotes."""
-    quotes: list[QuoteInfo]
-
-
-class IntermediaryAgentInfo(BaseModel):
-    """
-    SAP account details for payment routing.
-    
-    Reference: https://docs.nexusglobalpayments.org/payment-setup/step-13-16-set-up-and-send-the-payment-instruction
-    """
-    agent_role: str = Field(alias="agentRole")
-    bic: str
-    account_number: str = Field(alias="accountNumber")
-    name: str
-    
-    class Config:
-        populate_by_name = True
-
-
-class IntermediaryAgentsResponse(BaseModel):
-    """Response from GET /quotes/{quoteId}/intermediary-agents."""
-    quote_id: str = Field(alias="quoteId")
-    intermediary_agent_1: IntermediaryAgentInfo = Field(alias="intermediaryAgent1")
-    intermediary_agent_2: IntermediaryAgentInfo = Field(alias="intermediaryAgent2")
-    
-    class Config:
-        populate_by_name = True
+from .schemas import (
+    QuoteInfo,
+    QuotesResponse,
+    IntermediaryAgentInfo,
+    IntermediaryAgentsResponse,
+)
 
 
 # =============================================================================

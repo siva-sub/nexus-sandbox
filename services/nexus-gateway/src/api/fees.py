@@ -11,7 +11,6 @@ from decimal import Decimal
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
-from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,78 +24,12 @@ router = APIRouter()
 # Response Models
 # =============================================================================
 
-class FeeBreakdown(BaseModel):
-    """
-    Detailed fee breakdown for a payment.
-    
-    Reference: https://docs.nexusglobalpayments.org/apis/fees-and-amounts
-    """
-    source_psp_fee: str | None = Field(alias="sourcePspFee", default=None)
-    destination_psp_fee: str | None = Field(alias="destinationPspFee", default=None)
-    fx_spread: str | None = Field(alias="fxSpread", default=None)
-    total_fees: str = Field(alias="totalFees")
-    
-    class Config:
-        populate_by_name = True
-
-
-class AmountCalculation(BaseModel):
-    """Amount calculation including fees."""
-    sender_amount: str = Field(alias="senderAmount")
-    interbank_settlement_amount: str = Field(alias="interbankSettlementAmount")
-    creditor_amount: str = Field(alias="creditorAmount")
-    fees: FeeBreakdown
-    
-    class Config:
-        populate_by_name = True
-
-
-class FeesAndAmountsResponse(BaseModel):
-    """Response from GET /fees-and-amounts."""
-    source_currency: str = Field(alias="sourceCurrency")
-    destination_currency: str = Field(alias="destinationCurrency")
-    exchange_rate: str = Field(alias="exchangeRate")
-    calculation: AmountCalculation
-    
-    class Config:
-        populate_by_name = True
-
-
-class PreTransactionDisclosureResponse(BaseModel):
-    """
-    Pre-Transaction Disclosure response per ADR-012.
-    
-    Matches frontend FeeBreakdown interface exactly.
-    Reference: docs/adr/ADR-012-quote-snapshot-architecture.md
-    """
-    quote_id: str = Field(alias="quoteId")
-    
-    # Rates (destination per source, e.g., IDR per SGD)
-    market_rate: str = Field(alias="marketRate")
-    customer_rate: str = Field(alias="customerRate")
-    applied_spread_bps: str = Field(alias="appliedSpreadBps")
-    
-    # Destination (recipient side)
-    recipient_net_amount: str = Field(alias="recipientNetAmount")
-    payout_gross_amount: str = Field(alias="payoutGrossAmount")
-    destination_psp_fee: str = Field(alias="destinationPspFee")
-    destination_currency: str = Field(alias="destinationCurrency")
-    
-    # Source (sender side)
-    sender_principal: str = Field(alias="senderPrincipal")
-    source_psp_fee: str = Field(alias="sourcePspFee")
-    source_psp_fee_type: str = Field(alias="sourcePspFeeType", default="DEDUCTED")
-    scheme_fee: str = Field(alias="schemeFee")
-    sender_total: str = Field(alias="senderTotal")
-    source_currency: str = Field(alias="sourceCurrency")
-    
-    # Disclosure metrics (ADR-012)
-    effective_rate: str = Field(alias="effectiveRate")
-    total_cost_percent: str = Field(alias="totalCostPercent")
-    quote_valid_until: str = Field(alias="quoteValidUntil")
-    
-    class Config:
-        populate_by_name = True
+from .schemas import (
+    FeeBreakdown,
+    AmountCalculation,
+    FeesAndAmountsResponse,
+    PreTransactionDisclosureResponse,
+)
 
 
 # =============================================================================
@@ -242,13 +175,7 @@ async def calculate_fees_path_params(
     }
 
 
-class CreditorAgentFeeResponse(BaseModel):
-    """Response from GET /creditor-agent-fee."""
-    fee_percent: float = Field(alias="feePercent")
-    currency: str
-    
-    class Config:
-        populate_by_name = True
+from .schemas import CreditorAgentFeeResponse
 
 
 @router.get(

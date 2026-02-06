@@ -13,7 +13,6 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,28 +21,7 @@ from ..db import get_db
 router = APIRouter(prefix="/v1/psps", tags=["Payment Service Providers"])
 
 
-class PSPResponse(BaseModel):
-    """PSP details response."""
-    bic: str = Field(..., description="Bank Identifier Code (SWIFT/BIC)")
-    name: str = Field(..., description="Institution name")
-    country_code: str = Field(..., description="ISO 3166-1 alpha-2 country code")
-    fee_percent: float = Field(..., description="Fee percentage for transactions")
-    psp_id: Optional[UUID] = None
-
-
-class PSPListResponse(BaseModel):
-    """List of PSPs response."""
-    psps: list[PSPResponse]
-    total: int
-
-
-class PSPPaymentSummary(BaseModel):
-    """Summary of payments for a PSP."""
-    total_sent: int = 0
-    total_received: int = 0
-    total_amount_sent: float = 0.0
-    total_amount_received: float = 0.0
-    currency: str = "SGD"
+from .schemas import PSPResponse, PSPListResponse, PSPPaymentSummary
 
 
 @router.get("", response_model=PSPListResponse)

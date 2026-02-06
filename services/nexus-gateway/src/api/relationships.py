@@ -16,48 +16,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 from datetime import datetime, timezone
 from decimal import Decimal
-from pydantic import BaseModel
 from uuid import uuid4
 from ..db import get_db
 
 router = APIRouter(prefix="/v1", tags=["FX Rate Improvements"])
 
 
-class TierDefinition(BaseModel):
-    """Tier-based rate improvement definition."""
-    tierId: str
-    fxpId: str
-    sourceCurrency: str
-    destinationCurrency: str
-    minAmount: str
-    maxAmount: str
-    improvementBps: int  # Basis points improvement
-    description: str
-
-
-class RelationshipDefinition(BaseModel):
-    """PSP-specific rate improvement definition."""
-    relationshipId: str
-    fxpId: str
-    pspId: str
-    improvementBps: int  # Basis points improvement (applies to all currencies)
-    effectiveFrom: str
-    effectiveUntil: Optional[str] = None
-    description: str
-
-
-class TierListResponse(BaseModel):
-    """List of tier definitions."""
-    fxpId: str
-    tiers: list[TierDefinition]
-    count: int
-
-
-class RelationshipListResponse(BaseModel):
-    """List of PSP relationships."""
-    fxpId: str
-    relationships: list[RelationshipDefinition]
-    count: int
+from .schemas import (
+    TierDefinition,
+    RelationshipDefinition,
+    TierListResponse,
+    RelationshipListResponse
+)
 
 
 # =============================================================================

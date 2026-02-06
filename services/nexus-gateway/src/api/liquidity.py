@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
-from pydantic import BaseModel
 from ..db import get_db
 
 router = APIRouter(prefix="/v1/liquidity", tags=["Liquidity Management"])
@@ -24,53 +23,12 @@ router = APIRouter(prefix="/v1/liquidity", tags=["Liquidity Management"])
 # Pydantic Models
 # =============================================================================
 
-class FxpBalance(BaseModel):
-    """FXP balance at a SAP."""
-    fxpId: str
-    sapId: str
-    accountId: str
-    currency: str
-    availableBalance: str
-    reservedBalance: str
-    totalBalance: str
-    creditLimit: str
-    lastUpdated: str
-
-
-class LiquidityReservation(BaseModel):
-    """Liquidity reservation for a payment."""
-    reservationId: str
-    fxpId: str
-    sapId: str
-    uetr: str
-    amount: str
-    currency: str
-    status: str  # RESERVED, RELEASED, EXECUTED
-    createdAt: str
-    expiresAt: str
-
-
-class PaymentNotification(BaseModel):
-    """Nexus payment notification to FXP (NotebookLM confirmed)."""
-    uetr: str
-    executionDate: str
-    sourceAmount: str
-    sourceCurrency: str
-    destinationAmount: str
-    destinationCurrency: str
-    exchangeRate: str
-    fxpId: str
-    sourceSapId: str
-    destinationSapId: str
-    status: str  # ACCC, RJCT
-
-
-class InterbankSettlementCalc(BaseModel):
-    """Interbank settlement amount calculation."""
-    sourceLeg: dict  # Source PSP -> Source SAP
-    destinationLeg: dict  # Destination SAP -> Destination PSP
-    calculationMethod: str
-    notes: list[str]
+from .schemas import (
+    FxpBalance,
+    LiquidityReservation,
+    PaymentNotification,
+    InterbankSettlementCalc
+)
 
 
 # =============================================================================

@@ -77,51 +77,17 @@ class RecallStatus(str, Enum):
 # Request/Response Models
 # =============================================================================
 
-class Pacs004Request(BaseModel):
-    """pacs.004 PaymentReturn request from Destination PSP."""
-    originalUetr: str = Field(..., description="UETR of original payment to return")
-    returnUetr: str = Field(default_factory=lambda: str(uuid4()), description="UETR for return payment")
-    returnReasonCode: ReturnReasonCode
-    returnReasonText: Optional[str] = None
-    returnAmount: str = Field(..., description="Amount to return (may be partial)")
-    returnCurrency: str = Field(..., pattern="^[A-Z]{3}$")
-    instructionPriority: str = Field("NORM", pattern="^(NORM|HIGH)$")
-
-
-class Pacs004Response(BaseModel):
-    """Response after processing pacs.004."""
-    originalUetr: str
-    returnUetr: str
-    status: str
-    returnReasonCode: str
-    message: str
-    processedAt: str
-
-
-class Camt056Request(BaseModel):
-    """camt.056 Cancellation Request from Source PSP (recall)."""
-    originalUetr: str = Field(..., description="UETR of payment to cancel/recall")
-    cancellationReasonCode: CancellationReasonCode
-    cancellationReasonText: Optional[str] = None
-    requestedBy: str = Field(..., description="BIC of requesting PSP")
-    originalAmount: Optional[str] = None
-    recallType: str = Field("FULL", pattern="^(FULL|PARTIAL)$")
-
-
-class Camt056Response(BaseModel):
-    """Response after initiating recall request."""
-    originalUetr: str
-    recallId: str
-    status: RecallStatus
-    recallType: str
-    message: str
-    submittedAt: str
-
-
-class RecallListResponse(BaseModel):
-    """List of recall requests."""
-    count: int
-    recalls: List[dict]
+from .schemas import (
+    Pacs004Request,
+    Pacs004Response,
+    Camt056Request,
+    Camt056Response,
+    RecallListResponse,
+    Camt029Request,
+    Camt029Response,
+    Pacs028Request,
+    Pacs028Response
+)
 
 
 # =============================================================================
@@ -370,24 +336,6 @@ class InvestigationStatus(str, Enum):
     UWFW = "UWFW"  # Unable to forward (routing issue)
 
 
-class Camt029Request(BaseModel):
-    """camt.029 Resolution of Investigation from Destination PSP."""
-    originalUetr: str = Field(..., description="Original UETR from camt.056")
-    recallId: str = Field(..., description="Recall ID from camt.056 response")
-    investigationStatus: InvestigationStatus
-    statusReasonCode: Optional[str] = None
-    statusReasonText: Optional[str] = None
-    respondingPsp: str = Field(..., description="BIC of responding D-PSP")
-
-
-class Camt029Response(BaseModel):
-    """Response after processing camt.029."""
-    originalUetr: str
-    recallId: str
-    investigationStatus: str
-    message: str
-    processedAt: str
-    nextStep: str
 
 
 @router.post(
@@ -474,22 +422,6 @@ async def receive_camt029(
 # In Release 1, S-PSP re-sends pacs.008 instead; downstream resends stored pacs.002."
 # =============================================================================
 
-class Pacs028Request(BaseModel):
-    """pacs.028 Payment Status Request from Source PSP."""
-    originalUetr: str = Field(..., description="UETR of payment to query")
-    queryingPsp: str = Field(..., description="BIC of requesting PSP")
-    queryReason: Optional[str] = Field(None, description="Reason for status query")
-
-
-class Pacs028Response(BaseModel):
-    """Response to pacs.028 status request."""
-    originalUetr: str
-    paymentFound: bool
-    currentStatus: Optional[str] = None
-    statusReasonCode: Optional[str] = None
-    lastStatusUpdateAt: Optional[str] = None
-    advice: str
-    respondedAt: str
 
 
 # In-memory payment status cache (simulates what Nexus tracks)

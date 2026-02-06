@@ -11,24 +11,12 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
-from pydantic import BaseModel
 from ..db import get_db
 
 router = APIRouter(prefix="/v1", tags=["Reference Data"])
 
 
-class CurrencyResponse(BaseModel):
-    """Currency details response."""
-    currencyCode: str
-    currencyName: str
-    decimalPlaces: int
-    countries: list[str]
-    isActive: bool
-
-
-class CurrenciesListResponse(BaseModel):
-    """List of currencies."""
-    currencies: list[CurrencyResponse]
+from .schemas import CurrencyResponse, CurrenciesListResponse
 
 
 @router.get(

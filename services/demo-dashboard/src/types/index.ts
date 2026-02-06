@@ -191,15 +191,24 @@ export interface Payment {
     initiated_at: string; // Backend sync
 }
 
+export interface AddressTypeInputLabel {
+    code: string;
+    title: { [lang: string]: string }; // e.g., { "en": "Mobile Number" }
+}
+
+export interface AddressTypeInputAttributes {
+    name: string; // accountOrProxyId, finInstId, addressTypeCode
+    type: string; // text, tel, number, email
+    pattern?: string | null; // Regex for validation (null for email)
+    placeholder?: string;
+    required: boolean;
+    hidden?: boolean; // True for addressTypeCode hidden fields
+}
+
 export interface AddressTypeInputDetails {
-    fieldName: string;
-    displayLabel: string;
-    dataType: string;
-    attributes: {
-        placeholder?: string;
-        pattern?: string;
-        required: boolean;
-    };
+    label: AddressTypeInputLabel;
+    attributes: AddressTypeInputAttributes;
+    iso20022Path?: string; // XPath in acmt.023
 }
 
 export interface AddressTypeWithInputs {

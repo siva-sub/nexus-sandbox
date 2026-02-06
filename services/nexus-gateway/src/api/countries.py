@@ -26,76 +26,16 @@ router = APIRouter()
 # Matching the structure from https://docs.nexusglobalpayments.org/apis/countries
 # =============================================================================
 
-class CurrencyInfo(BaseModel):
-    """Currency information for a country."""
-    currency_code: str = Field(alias="currencyCode")
-    max_amount: str = Field(alias="maxAmount")
-    
-    class Config:
-        populate_by_name = True
-
-
-class RequiredMessageElements(BaseModel):
-    """Required ISO 20022 message elements per country."""
-    pacs008: list[str] | None = None
-
-
-class CountryInfo(BaseModel):
-    """
-    Country information.
-    
-    Reference: GET /countries response structure from
-    https://docs.nexusglobalpayments.org/apis/countries
-    """
-    country_id: int = Field(alias="countryId")
-    country_code: str = Field(alias="countryCode")
-    name: str
-    currencies: list[CurrencyInfo]
-    required_message_elements: RequiredMessageElements = Field(
-        alias="requiredMessageElements"
-    )
-    
-    class Config:
-        populate_by_name = True
-
-
-class CountriesResponse(BaseModel):
-    """Response from GET /countries."""
-    countries: list[CountryInfo]
-
-
-class PspInfo(BaseModel):
-    """PSP information for a country."""
-    psp_id: str = Field(alias="pspId")
-    bic: str
-    name: str
-    fee_percent: float = Field(alias="feePercent")
-    
-    class Config:
-        populate_by_name = True
-
-
-class FinancialInstitutionsResponse(BaseModel):
-    """Response from GET /countries/{code}/psps."""
-    psps: list[PspInfo]
-
-
-class AddressTypeInfo(BaseModel):
-    """Address type information."""
-    code: str
-    display_name: str = Field(alias="displayName")
-    requires_proxy_resolution: bool = Field(alias="requiresProxyResolution")
-    
-    class Config:
-        populate_by_name = True
-
-
-class AddressTypesResponse(BaseModel):
-    """Response from GET /countries/{code}/address-types."""
-    address_types: list[AddressTypeInfo] = Field(alias="addressTypes")
-    
-    class Config:
-        populate_by_name = True
+from .schemas import (
+    CurrencyInfo,
+    RequiredMessageElements,
+    CountryInfo,
+    CountriesResponse,
+    PspInfo,
+    FinancialInstitutionsResponse,
+    AddressTypeInfo,
+    AddressTypesResponse,
+)
 
 
 # =============================================================================

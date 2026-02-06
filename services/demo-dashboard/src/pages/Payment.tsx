@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
     Title,
     Grid,
@@ -47,7 +48,16 @@ import {
     IconCopy,
 } from "@tabler/icons-react";
 import type { Country, Quote, FeeBreakdown, LifecycleStep, ProxyResolutionResult, IntermediaryAgentsResponse } from "../types";
-import { getCountries, getQuotes, getAddressTypes, resolveProxy, getPreTransactionDisclosure, parseQRCode, getIntermediaryAgents } from "../services/api";
+import {
+    getCountries,
+    getQuotes,
+    getAddressTypes,
+    resolveProxy,
+    getPreTransactionDisclosure,
+    parseQRCode,
+    getIntermediaryAgents,
+    submitPacs008
+} from "../services/api";
 
 // 17-Step Lifecycle Definition
 const LIFECYCLE_STEPS: Omit<LifecycleStep, "status" | "timestamp" | "details">[] = [
@@ -79,6 +89,9 @@ const PHASE_NAMES = {
 };
 
 export function PaymentPage() {
+    const [searchParams] = useSearchParams();
+    const demoCode = searchParams.get("demo");
+
     // Form state
     const [amount, setAmount] = useState<number | string>(1000);
     const [amountType, setAmountType] = useState<"SOURCE" | "DESTINATION">("SOURCE");
@@ -86,6 +99,7 @@ export function PaymentPage() {
     const [selectedCountry, setSelectedCountry] = useState<string | null>(null); // Destination country
     const [selectedProxyType, setSelectedProxyType] = useState<string | null>(null);
     const [recipientData, setRecipientData] = useState<Record<string, string>>({});
+    const [uetr, _setUetr] = useState<string>(crypto.randomUUID());
 
     // Data state
     const [countries, setCountries] = useState<Country[]>([]);
@@ -96,6 +110,44 @@ export function PaymentPage() {
     const [resolution, setResolution] = useState<ProxyResolutionResult | null>(null);
     const [recipientErrors, setRecipientErrors] = useState<Record<string, string | null>>({});
     const [intermediaries, setIntermediaries] = useState<IntermediaryAgentsResponse | null>(null);
+
+    // Consume demo trigger
+    useEffect(() => {
+        const triggerStr = sessionStorage.getItem("demoTrigger");
+        if (triggerStr && demoCode) {
+            try {
+                const trigger = JSON.parse(triggerStr);
+                if (trigger.code === demoCode) {
+                    // Logic to auto-fill based on trigger
+                    if (demoCode === 'AM04') setAmount(99999);
+                    if (demoCode === 'AM02') setAmount(50001);
+                    if (demoCode === 'BE23') {
+                        setSelectedCountry('TH');
+                        setRecipientData({ 'MOBILE': '+66999999999' });
+                        setSelectedProxyType('MOBILE');
+                    }
+                    if (demoCode === 'AC04') {
+                        setSelectedCountry('MY');
+                        setRecipientData({ 'MOBILE': '+60999999999' });
+                        setSelectedProxyType('MOBILE');
+                    }
+                    if (demoCode === 'RR04') {
+                        setSelectedCountry('ID');
+                        setRecipientData({ 'MOBILE': '+62999999999' });
+                        setSelectedProxyType('MOBILE');
+                    }
+
+                    notifications.show({
+                        title: "Demo Auto-Populated",
+                        message: `Setup for ${demoCode} scenario applied.`,
+                        color: "blue"
+                    });
+                }
+            } catch (e) {
+                console.error("Failed to consume demo trigger", e);
+            }
+        }
+    }, [demoCode, countries]); // Wait for countries to load before setting selectedCountry
 
 
 
@@ -278,7 +330,7 @@ export function PaymentPage() {
 
     const handleResolve = async () => {
         const typeData = proxyTypes.find(t => t.value === selectedProxyType);
-        const requiredFields = typeData?.inputs?.map((i: import("../types").AddressTypeInputDetails) => i.fieldName) || [];
+        const requiredFields = typeData?.inputs?.map((i: import("../types").AddressTypeInputDetails) => i.attributes.name) || [];
         const hasAllFields = requiredFields.every((f) => !!recipientData[f]);
 
         if (!selectedCountry || !selectedProxyType || !hasAllFields) {
@@ -425,25 +477,74 @@ export function PaymentPage() {
     };
 
     const handleSubmit = async () => {
-        setLoading((prev) => ({ ...prev, submit: true }));
-
-        for (let step = 12; step <= 17; step++) {
-            advanceStep(step);
-            await new Promise((r) => setTimeout(r, 800));
+        if (!selectedQuote) {
+            notifications.show({ title: "Error", message: "Please select a quote first", color: "red" });
+            return;
         }
 
-        // Mark step 17 as completed by advancing to a virtual step 18
-        // This ensures the final "Accept & Notify" step shows as green checkmark
-        advanceStep(18);
+        setLoading((prev) => ({ ...prev, submit: true }));
 
-        setLoading((prev) => ({ ...prev, submit: false }));
+        try {
+            // Step 14: Construct message
+            advanceStep(14);
 
-        notifications.show({
-            title: "Payment Complete",
-            message: "Transaction completed successfully (pacs.002 ACCC)",
-            color: "green",
-            icon: <IconCheck size={16} />,
-        });
+            // Step 15: Submit to IPS
+            advanceStep(15);
+
+            const params = {
+                uetr,
+                quoteId: selectedQuote.quoteId,
+                sourceAmount: Number(amount),
+                sourceCurrency: feeBreakdown?.sourceCurrency || "SGD",
+                destinationAmount: Number(selectedQuote.destinationInterbankAmount),
+                destinationCurrency: selectedQuote.destinationCurrency,
+                exchangeRate: Number(selectedQuote.exchangeRate),
+                debtorName: "Demo Sender",
+                debtorAccount: "DEMO-SENDER-ACCT",
+                debtorAgentBic: "DBSGSGSG", // Default source agent
+                creditorName: resolution?.beneficiaryName || "Demo Recipient",
+                creditorAccount: resolution?.accountNumber || "DEMO-RECIPIENT-ACCT",
+                creditorAgentBic: resolution?.agentBic || "MOCKTHBK",
+                scenarioCode: demoCode || undefined
+            };
+
+            const result = await submitPacs008(params);
+
+            // Step 16: Settlement Chain
+            advanceStep(16);
+            await new Promise(r => setTimeout(r, 800));
+
+            // Step 17: Completion
+            advanceStep(17);
+            advanceStep(18); // Checkmark for visual finish
+
+            notifications.show({
+                title: "Payment Successful",
+                message: `Transaction ${result.uetr} completed (ACCC)`,
+                color: "green",
+                icon: <IconCheck size={16} />
+            });
+        } catch (err: any) {
+            // Handle rejection (unhappy flows)
+            const statusCode = err.statusReasonCode || 'RJCT';
+            const description = err.errors?.[0] || err.detail || 'Payment failed';
+
+            // Mark step 15 as error
+            setSteps(prev => prev.map(s => ({
+                ...s,
+                status: s.id === 15 ? 'error' : s.status
+            })));
+
+            notifications.show({
+                title: `Payment Rejected (${statusCode})`,
+                message: description,
+                color: "red",
+                icon: <IconAlertCircle size={16} />,
+                autoClose: false
+            });
+        } finally {
+            setLoading((prev) => ({ ...prev, submit: false }));
+        }
     };
 
     const getStepIcon = (status: LifecycleStep["status"]) => {
@@ -593,14 +694,14 @@ export function PaymentPage() {
                                 />
                                 {proxyTypes.find(t => t.value === selectedProxyType)?.inputs?.map((input: import("../types").AddressTypeInputDetails) => (
                                     <TextInput
-                                        key={input.fieldName}
-                                        label={input.displayLabel}
+                                        key={input.attributes.name}
+                                        label={input.label.title['en'] || input.label.code}
                                         placeholder={input.attributes?.placeholder || ""}
-                                        value={recipientData[input.fieldName] || ""}
-                                        error={recipientErrors[input.fieldName]}
+                                        value={recipientData[input.attributes.name] || ""}
+                                        error={recipientErrors[input.attributes.name]}
                                         onChange={(e) => {
                                             const val = e.currentTarget.value;
-                                            setRecipientData(prev => ({ ...prev, [input.fieldName]: val }));
+                                            setRecipientData(prev => ({ ...prev, [input.attributes.name]: val }));
 
                                             // Validate against backend regex
                                             const pattern = input.attributes?.pattern;
@@ -609,13 +710,13 @@ export function PaymentPage() {
                                                 if (!regex.test(val)) {
                                                     setRecipientErrors(prev => ({
                                                         ...prev,
-                                                        [input.fieldName]: `Invalid format. Expected: ${input.attributes?.placeholder || "correct format"}`
+                                                        [input.attributes.name]: `Invalid format. Expected: ${input.attributes?.placeholder || "correct format"}`
                                                     }));
                                                 } else {
-                                                    setRecipientErrors(prev => ({ ...prev, [input.fieldName]: null }));
+                                                    setRecipientErrors(prev => ({ ...prev, [input.attributes.name]: null }));
                                                 }
                                             } else {
-                                                setRecipientErrors(prev => ({ ...prev, [input.fieldName]: null }));
+                                                setRecipientErrors(prev => ({ ...prev, [input.attributes.name]: null }));
                                             }
                                         }}
                                         disabled={!selectedProxyType}

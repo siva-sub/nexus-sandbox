@@ -28,41 +28,13 @@ router = APIRouter(prefix="/v1", tags=["Addressing"])
 # Pydantic Models matching exact Nexus API structure
 # =============================================================================
 
-class InputLabel(BaseModel):
-    """Address type label with code and localized title."""
-    code: str
-    title: dict[str, str]  # e.g., {"en": "Mobile Number", "zh": "手机号码"}
-
-
-class InputAttributes(BaseModel):
-    """Input field attributes for form rendering."""
-    name: str  # accountOrProxyId, finInstId, addressTypeCode
-    type: str  # text, tel, number, email
-    pattern: Optional[str] = None  # Regex for validation (None for email)
-    placeholder: Optional[str] = None  # Example value
-    required: bool = True
-    hidden: bool = False  # True for addressTypeCode hidden fields
-
-
-class AddressTypeInput(BaseModel):
-    """Complete input definition per Nexus spec."""
-    label: InputLabel
-    attributes: InputAttributes
-    iso20022Path: Optional[str] = None  # XPath in acmt.023
-
-
-class AddressTypeInputsResponse(BaseModel):
-    """Response for GET /address-types/{id}/inputs."""
-    addressTypeId: str
-    addressTypeName: str
-    countryCode: str
-    inputs: list[AddressTypeInput]
-
-
-class CountryAddressTypesResponse(BaseModel):
-    """Response for GET /countries/{cc}/address-types-and-inputs."""
-    countryCode: str
-    addressTypes: list[AddressTypeInputsResponse]
+from .schemas import (
+    InputLabel,
+    InputAttributes,
+    AddressTypeInput,
+    AddressTypeInputsResponse,
+    CountryAddressTypesResponse,
+)
 
 
 # =============================================================================
@@ -282,19 +254,28 @@ def get_nidn_inputs(country_code: str) -> list[AddressTypeInput]:
 
 
 # Mapping of proxy types to input generators
+# Reference: migrations/002_seed_data.sql standardizes these codes
 PROXY_TYPE_GENERATORS = {
-    "MBNO": get_mbno_inputs,
+    "MOBI": get_mbno_inputs,  # Singapore, Thailand, Malaysia (legacy standard)
+    "MBNO": get_mbno_inputs,  # Indonesia, India (new standard)
     "EMAL": get_emal_inputs,
-    "ACCT": get_acct_inputs,
-    "IBAN": get_iban_inputs,
+    # "NIK": get_nik_inputs, # Not yet implemented
+    # "VPA": get_vpa_inputs, # Not yet implemented
+    # "UEN": get_uen_inputs, # Not yet implemented
+    # "NRIC": get_nric_inputs, # Not yet implemented
     "NIDN": get_nidn_inputs,
+    # "EWAL": get_ewal_inputs, # Not yet implemented
+    # "BIZN": get_bizn_inputs, # Not yet implemented
+    # "PASS": get_pass_inputs, # Not yet implemented
+    "ACCT": get_acct_inputs,
+    "IBAN": get_iban_inputs, # IBAN is a type of ACCT, but has its own generator
 }
 
 # Country-specific proxy type availability
 COUNTRY_PROXY_TYPES = {
-    "SG": ["MBNO", "NIDN", "ACCT"],  # PayNow
-    "TH": ["MBNO", "NIDN", "ACCT"],  # PromptPay
-    "MY": ["MBNO", "NIDN", "ACCT"],  # DuitNow
+    "SG": ["MOBI", "NIDN", "ACCT"],  # PayNow
+    "TH": ["MOBI", "NIDN", "ACCT"],  # PromptPay
+    "MY": ["MOBI", "NIDN", "ACCT"],  # DuitNow
     "PH": ["MBNO", "ACCT"],          # InstaPay (MBNO requires finInstId)
     "ID": ["MBNO", "EMAL", "ACCT"],  # BI-FAST
     "IN": ["MBNO", "ACCT"],          # UPI

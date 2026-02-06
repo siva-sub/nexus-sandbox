@@ -20,7 +20,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 from decimal import Decimal, getcontext
 from datetime import datetime, timezone
-from pydantic import BaseModel
 from ..db import get_db
 
 # High precision for FX calculations
@@ -29,57 +28,7 @@ getcontext().prec = 40
 router = APIRouter(prefix="/v1", tags=["Fees"])
 
 
-class FeeFormulaResponse(BaseModel):
-    """Fee formula definition."""
-    feeType: str
-    countryCode: str
-    currencyCode: str
-    fixedAmount: str
-    percentageRate: str
-    minimumFee: str
-    maximumFee: str
-    description: str
-
-
-class PreTransactionDisclosure(BaseModel):
-    """
-    Pre-transaction fee disclosure per Nexus requirements.
-    
-    INVARIANTS (these MUST hold true):
-    1. payout_gross = recipient_net + destination_fee (in destination currency)
-    2. sender_total = sender_principal + source_psp_fee + scheme_fee (in source currency)
-    3. effective_rate = recipient_net / sender_total
-    4. customer_rate = market_rate * (1 - spread_bps/10000)
-    5. sender_principal = payout_gross / customer_rate
-    """
-    # Quote reference
-    quoteId: str
-    
-    # Market and customer rates (both in destination per source)
-    marketRate: str               # Mid-market rate (IDR per SGD)
-    customerRate: str             # Rate after spread applied
-    appliedSpreadBps: str         # Spread actually applied
-    
-    # Payout side (destination currency - IDR)
-    recipientNetAmount: str       # What recipient ACTUALLY receives (NET)
-    payoutGrossAmount: str        # Amount sent to dest PSP (before their fee)
-    destinationPspFee: str        # Fee deducted by dest PSP
-    destinationCurrency: str
-    
-    # Sender side (source currency - SGD)
-    senderPrincipal: str          # FX principal (funds payout at customer rate)
-    sourcePspFee: str             # Source PSP fee
-    sourcePspFeeType: str         # DEDUCTED or INVOICED
-    schemeFee: str                # Nexus scheme fee
-    senderTotal: str              # Total amount debited from sender
-    sourceCurrency: str
-    
-    # Disclosure metrics
-    effectiveRate: str            # recipient_net / sender_total (IDR per SGD)
-    totalCostPercent: str         # Cost vs mid-market benchmark
-    
-    # Quote validity
-    quoteValidUntil: str
+from .schemas import FeeFormulaResponse, PreTransactionDisclosure
 
 
 def _calculate_destination_fee(gross_payout: Decimal, currency: str) -> Decimal:

@@ -83,7 +83,15 @@ secrets/
 *.db
 *.sqlite3
 
-# Backup files (should be cleaned)
+# Environment and Cache
+.venv/
+.hypothesis/
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+dist/
+.env
 *backup*/
 *-backup/
 *.bak

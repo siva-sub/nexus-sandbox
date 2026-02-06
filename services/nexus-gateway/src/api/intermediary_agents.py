@@ -15,30 +15,12 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
-from pydantic import BaseModel
 from ..db import get_db
 
 router = APIRouter(prefix="/v1", tags=["Quotes"])
 
 
-class IntermediaryAgentAccount(BaseModel):
-    """SAP account details for an FXP."""
-    agentRole: str  # IntermediaryAgent1 or IntermediaryAgent2
-    sapId: str
-    sapName: str
-    sapBicfi: str
-    accountId: str
-    accountType: str  # Usually "CACC" (Cash Account)
-    currency: str
-
-
-class IntermediaryAgentsResponse(BaseModel):
-    """Response for GET /quotes/{quoteId}/intermediary-agents."""
-    quoteId: str
-    fxpId: str
-    fxpName: str
-    intermediaryAgent1: IntermediaryAgentAccount  # Source SAP
-    intermediaryAgent2: IntermediaryAgentAccount  # Destination SAP
+from .schemas import IntermediaryAgentAccount, IntermediaryAgentsResponse
 
 
 @router.get(

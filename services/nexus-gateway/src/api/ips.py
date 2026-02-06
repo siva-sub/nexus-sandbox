@@ -14,7 +14,6 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,34 +22,12 @@ from ..db import get_db
 router = APIRouter(prefix="/v1/ips", tags=["Instant Payment Systems"])
 
 
-class IPSOperatorResponse(BaseModel):
-    """IPS Operator details."""
-    ips_id: Optional[UUID] = None
-    name: str = Field(..., description="IPS operator name")
-    country_code: str = Field(..., description="Country where IPS operates")
-    clearing_system_id: str = Field(..., description="ISO 20022 clearing system ID")
-    max_amount: float = Field(..., description="Maximum transaction amount in local currency")
-    currency_code: str = Field(..., description="Local currency code")
-
-
-class IPSListResponse(BaseModel):
-    """List of IPS operators."""
-    operators: list[IPSOperatorResponse]
-    total: int
-
-
-class IPSMemberResponse(BaseModel):
-    """PSP connected to an IPS."""
-    bic: str
-    name: str
-    is_active: bool = True
-
-
-class IPSMembersResponse(BaseModel):
-    """List of PSPs connected to an IPS."""
-    clearing_system_id: str
-    members: list[IPSMemberResponse]
-    total: int
+from .schemas import (
+    IPSOperatorResponse,
+    IPSListResponse,
+    IPSMemberResponse,
+    IPSMembersResponse
+)
 
 
 @router.get("", response_model=IPSListResponse)

@@ -104,7 +104,7 @@ export async function getAddressTypes(countryCode: string) {
         };
     }
     return fetchJSON<{ countryCode: string; addressTypes: import("../types").AddressTypeWithInputs[] }>(
-        `/v1/countries/${countryCode}/addressTypesAndInputs`
+        `/v1/countries/${countryCode}/address-types-and-inputs`
     );
 }
 
@@ -194,19 +194,16 @@ function buildPacs008Xml(params: Pacs008Params): string {
     </GrpHdr>
     <CdtTrfTxInf>
       <PmtId>
+        <InstrId>${params.quoteId}</InstrId>
         <EndToEndId>${endToEndId}</EndToEndId>
         <UETR>${params.uetr}</UETR>
       </PmtId>
       <IntrBkSttlmAmt Ccy="${params.sourceCurrency}">${params.sourceAmount.toFixed(2)}</IntrBkSttlmAmt>
       <IntrBkSttlmDt>${now.split('T')[0]}</IntrBkSttlmDt>
       <InstdAmt Ccy="${params.destinationCurrency}">${params.destinationAmount.toFixed(2)}</InstdAmt>
-      <XchgRate>${params.exchangeRate}</XchgRate>
-      <AgrdRate>
-        <UnitCcy>${params.sourceCurrency}</UnitCcy>
-        <QtdCcy>${params.destinationCurrency}</QtdCcy>
-        <PreAgrdXchgRate>${params.exchangeRate}</PreAgrdXchgRate>
-        <QtId>${params.quoteId}</QtId>
-      </AgrdRate>
+      <XchgRateInformation>
+        <XchgRate>${params.exchangeRate}</XchgRate>
+      </XchgRateInformation>
       <ChrgBr>SHAR</ChrgBr>
       <Dbtr>
         <Nm>${params.debtorName}</Nm>
@@ -292,7 +289,14 @@ export async function submitPacs008(params: Pacs008Params): Promise<Pacs008Respo
     const xml = buildPacs008Xml(params);
     const callbackUrl = `${window.location.origin}/api/callback/pacs002`;
 
-    const response = await fetch(`${API_BASE}/v1/iso20022/pacs008?pacs002Endpoint=${encodeURIComponent(callbackUrl)}`, {
+    // Build query params - include scenarioCode for unhappy flow testing in backend mode
+    const queryParams = new URLSearchParams();
+    queryParams.set("pacs002Endpoint", callbackUrl);
+    if (params.scenarioCode && params.scenarioCode !== "happy") {
+        queryParams.set("scenarioCode", params.scenarioCode);
+    }
+
+    const response = await fetch(`${API_BASE}/v1/iso20022/pacs008?${queryParams.toString()}`, {
         method: "POST",
         headers: {
             "Content-Type": "application/xml",

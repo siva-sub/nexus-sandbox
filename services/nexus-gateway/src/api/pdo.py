@@ -14,7 +14,6 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,44 +22,13 @@ from ..db import get_db
 router = APIRouter(prefix="/v1/pdos", tags=["Proxy Directory Operators"])
 
 
-class PDOResponse(BaseModel):
-    """PDO details."""
-    pdo_id: Optional[UUID] = None
-    name: str = Field(..., description="PDO operator name")
-    country_code: str = Field(..., description="Country where PDO operates")
-    supported_proxy_types: list[str] = Field(..., description="List of supported proxy types")
-
-
-class PDOListResponse(BaseModel):
-    """List of PDOs."""
-    pdos: list[PDOResponse]
-    total: int
-
-
-class ProxyRegistrationResponse(BaseModel):
-    """Proxy registration details."""
-    proxy_type: str
-    proxy_value: str
-    creditor_name_masked: str
-    bank_bic: str
-    bank_name: str
-    # Note: Full account details are not exposed for security
-
-
-class PDORegistrationsResponse(BaseModel):
-    """List of proxy registrations for a PDO."""
-    pdo_name: str
-    country_code: str
-    registrations: list[ProxyRegistrationResponse]
-    total: int
-
-
-class PDOStatsResponse(BaseModel):
-    """Statistics for a PDO."""
-    pdo_name: str
-    total_registrations: int
-    registrations_by_type: dict[str, int]
-    resolution_success_rate: float = 0.95  # Demo value
+from .schemas import (
+    PDOResponse,
+    PDOListResponse,
+    ProxyRegistrationResponse,
+    PDORegistrationsResponse,
+    PDOStatsResponse
+)
 
 
 @router.get("", response_model=PDOListResponse)

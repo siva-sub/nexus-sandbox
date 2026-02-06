@@ -29,35 +29,13 @@ from ..db import get_db
 
 router = APIRouter(prefix="/v1/actors", tags=["Actor Registry"])
 
+from .schemas import ActorRegistration, Actor, ActorsListResponse
+
 # =============================================================================
 # Models
 # =============================================================================
 
 ActorType = Literal["FXP", "IPS", "PSP", "SAP", "PDO"]
-
-class ActorRegistration(BaseModel):
-    """Request to register a new actor."""
-    bic: str = Field(..., min_length=8, max_length=11, description="BIC code of the actor")
-    actor_type: ActorType = Field(..., alias="actorType", description="Type of participant")
-    name: str = Field(..., description="Display name of the actor")
-    country_code: str = Field(..., alias="countryCode", min_length=2, max_length=2, description="ISO 3166-1 alpha-2 country")
-    callback_url: Optional[HttpUrl] = Field(None, alias="callbackUrl", description="Optional webhook URL for ISO message delivery")
-
-    class Config:
-        populate_by_name = True
-
-class Actor(ActorRegistration):
-    """Registered actor with ID and timestamps."""
-    actor_id: str = Field(..., alias="actorId")
-    registered_at: str = Field(..., alias="registeredAt")
-    status: str = Field(default="ACTIVE")
-
-    class Config:
-        populate_by_name = True
-
-class ActorsListResponse(BaseModel):
-    """List of registered actors."""
-    actors: list[Actor]
 
 # =============================================================================
 # In-Memory Registry (Sandbox Simplification)

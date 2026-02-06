@@ -12,7 +12,6 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Path
-from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,57 +25,7 @@ router = APIRouter()
 # Request/Response Models
 # =============================================================================
 
-class RateSubmission(BaseModel):
-    """
-    FX rate submission from an FXP.
-    
-    Reference: https://docs.nexusglobalpayments.org/fx-provision/rates-from-third-party-fx-providers
-    """
-    source_currency: str = Field(
-        ...,
-        alias="sourceCurrency",
-        min_length=3,
-        max_length=3,
-        description="ISO 4217 source currency code",
-    )
-    destination_currency: str = Field(
-        ...,
-        alias="destinationCurrency",
-        min_length=3,
-        max_length=3,
-        description="ISO 4217 destination currency code",
-    )
-    base_rate: Decimal = Field(
-        ...,
-        alias="baseRate",
-        gt=0,
-        description="Base exchange rate",
-    )
-    valid_seconds: int = Field(
-        3600,
-        alias="validSeconds",
-        ge=60,
-        le=86400,
-        description="How long the rate is valid (60-86400 seconds)",
-    )
-    
-    class Config:
-        populate_by_name = True
-
-
-class RateResponse(BaseModel):
-    """Response after rate submission."""
-    rate_id: str = Field(alias="rateId")
-    fxp_id: str = Field(alias="fxpId")
-    source_currency: str = Field(alias="sourceCurrency")
-    destination_currency: str = Field(alias="destinationCurrency")
-    base_rate: str = Field(alias="baseRate")
-    valid_from: str = Field(alias="validFrom")
-    valid_until: str = Field(alias="validUntil")
-    status: str
-    
-    class Config:
-        populate_by_name = True
+from .schemas import RateSubmission, RateResponse
 
 
 # =============================================================================
