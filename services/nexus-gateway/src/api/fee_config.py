@@ -7,8 +7,11 @@ This module defines all fee structures to avoid duplication across
 quotes.py, fees.py, and fee_formulas.py (per ADR-012).
 """
 
+import logging
 from decimal import Decimal
 from typing import TypedDict, Optional, Literal
+
+logger = logging.getLogger(__name__)
 
 
 # Fee types per Nexus spec
@@ -204,34 +207,43 @@ def calculate_destination_psp_fee(amount: Decimal, currency: str) -> tuple[Decim
     Returns:
         Tuple of (fee_amount, fee_currency)
     """
+    logger.debug(f"[FEE-DEBUG] calculate_destination_psp_fee ENTRY: amount={amount}, currency={currency}")
+    
     # Lookup by currency to find country structure
     for country, struct in DESTINATION_FEE_STRUCTURES.items():
         if struct["currency"] == currency.upper():
             calculated = struct["fixed"] + amount * struct["percent"]
             fee = max(struct["min"], min(struct["max"], calculated))
-            return fee.quantize(Decimal("0.01")), struct["currency"]
+            result = fee.quantize(Decimal("0.01"))
+            logger.debug(f"[FEE-DEBUG] calculate_destination_psp_fee EXIT: fee={result}, currency={struct['currency']}")
+            return result, struct["currency"]
     
     # Use default
     struct = DEFAULT_DESTINATION_FEE
     calculated = struct["fixed"] + amount * struct["percent"]
     fee = max(struct["min"], min(struct["max"], calculated))
-    return fee.quantize(Decimal("0.01")), currency
+    result = fee.quantize(Decimal("0.01"))
+    logger.debug(f"[FEE-DEBUG] calculate_destination_psp_fee EXIT (default): fee={result}, currency={currency}")
+    return result, currency
 
 
 def calculate_source_psp_fee(amount: Decimal, currency: str) -> Decimal:
     """
     Calculate source PSP fee with proper currency context.
-    
+
     Args:
         amount: Principal amount in source currency
         currency: Source currency code (ISO 4217)
-    
+
     Returns:
         Fee amount in source currency
     """
+    logger.debug(f"[FEE-DEBUG] calculate_source_psp_fee ENTRY: amount={amount}, currency={currency}")
     struct = get_source_fee_structure(currency)
     calculated = struct["fixed"] + amount * struct["percent"]
-    return max(struct["min"], min(struct["max"], calculated)).quantize(Decimal("0.01"))
+    fee = max(struct["min"], min(struct["max"], calculated)).quantize(Decimal("0.01"))
+    logger.debug(f"[FEE-DEBUG] calculate_source_psp_fee EXIT: fee={fee}, structure={struct}")
+    return fee
 
 
 def get_source_fee_type(country_code: str) -> FeeType:
@@ -255,25 +267,31 @@ def calculate_total_cost_to_sender(
 ) -> Decimal:
     """
     Calculate total cost to sender based on fee type.
-    
+
     For DEDUCTED fees: Total = Principal + Scheme Fee (PSP fee deducted from principal)
     For INVOICED fees: Total = Principal + Scheme Fee + PSP Fee (all charged separately)
-    
+
     Args:
         principal: Principal amount to send
         source_psp_fee: Source PSP fee amount
         scheme_fee: Nexus scheme fee
         fee_type: Whether PSP fee is DEDUCTED or INVOICED
-    
+
     Returns:
         Total amount debited from sender's account
     """
+    logger.debug(f"[FEE-DEBUG] calculate_total_cost_to_sender ENTRY: principal={principal}, source_psp_fee={source_psp_fee}, scheme_fee={scheme_fee}, fee_type={fee_type}")
+
     if fee_type == "INVOICED":
         # All fees charged separately - not deducted from principal
-        return principal + scheme_fee + source_psp_fee
+        total = principal + scheme_fee + source_psp_fee
+        logger.debug(f"[FEE-DEBUG] calculate_total_cost_to_sender EXIT (INVOICED): total={total}")
+        return total
     else:
         # DEDUCTED: PSP fee deducted from principal
-        return principal + scheme_fee
+        total = principal + scheme_fee
+        logger.debug(f"[FEE-DEBUG] calculate_total_cost_to_sender EXIT (DEDUCTED): total={total}")
+        return total
 
 
 def calculate_scheme_fee(amount: Decimal) -> Decimal:

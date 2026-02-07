@@ -10,6 +10,7 @@ This module implements FX quote generation following the Nexus specification:
 - Step 6: Quote includes intermediary agent details
 """
 
+import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Optional
@@ -21,6 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
 from src.db import get_db
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter()
@@ -304,6 +307,7 @@ async def get_quotes(
         # =================================================================
         # CALCULATE ALL FEES AT QUOTE TIME (Single Source of Truth)
         # =================================================================
+        logger.debug(f"[FEE-DEBUG] quotes.py ENTRY: amount={amount}, amount_type={amount_type}, source_currency={source_currency}, dest_currency={dest_currency}")
 
         if amount_type == "DESTINATION":
             # User specifies NET amount recipient should receive
@@ -318,6 +322,8 @@ async def get_quotes(
 
             # For DESTINATION quotes, calculate what the source fee WOULD be (for disclosure)
             source_psp_fee = _calculate_source_psp_fee(source_interbank_amount, source_currency)
+
+            logger.debug(f"[FEE-DEBUG] DESTINATION calc: creditor_account_amount={creditor_account_amount}, dest_psp_fee={dest_psp_fee}, dest_interbank_amount={dest_interbank_amount}, source_interbank_amount={source_interbank_amount}, source_psp_fee={source_psp_fee}")
 
         else:  # SOURCE
             # User specifies DebtorAccountAmount (total to DEBIT from sender)
@@ -335,6 +341,8 @@ async def get_quotes(
             # Calculate destination fee and net to recipient
             dest_psp_fee = _calculate_destination_psp_fee(dest_interbank_amount, dest_currency)
             creditor_account_amount = dest_interbank_amount - dest_psp_fee
+
+            logger.debug(f"[FEE-DEBUG] SOURCE calc: debtor_account_amount={debtor_account_amount}, source_psp_fee={source_psp_fee}, source_interbank_amount={source_interbank_amount}, dest_interbank_amount={dest_interbank_amount}, dest_psp_fee={dest_psp_fee}, creditor_account_amount={creditor_account_amount}")
         scheme_fee_calc = _calculate_scheme_fee(source_interbank_amount)
         
         # Check and apply capping
