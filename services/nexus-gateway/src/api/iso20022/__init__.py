@@ -63,7 +63,8 @@ from . import (
     pacs004, 
     pacs028, 
     recall_handlers, 
-    validate
+    validate,
+    templates
 )
 
 __all__ = [
@@ -108,6 +109,7 @@ __all__ = [
     "pacs028",
     "recall_handlers",
     "validate",
+    "templates",
     "router",  # Combined router
 ]
 
@@ -127,3 +129,4 @@ router.include_router(pacs004.router, tags=["pacs.004"])
 router.include_router(pacs028.router, tags=["pacs.028"])
 router.include_router(recall_handlers.router, tags=["Recalls"])
 router.include_router(validate.router, tags=["Validation"])
+router.include_router(templates.router, tags=["Templates"])

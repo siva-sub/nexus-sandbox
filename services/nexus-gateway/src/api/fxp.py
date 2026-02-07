@@ -132,8 +132,8 @@ async def submit_rate(
     Reference: https://docs.nexusglobalpayments.org/fx-provision/rates-from-third-party-fx-providers
     """
     # Verify FXP exists
-    fxp_query = text("SELECT fxp_id, name FROM fxps WHERE bic = :bic")
-    result = await db.execute(fxp_query, {"bic": fxp_bic.upper()})
+    fxp_query = text("SELECT fxp_id, name FROM fxps WHERE fxp_code = :fxp_code")
+    result = await db.execute(fxp_query, {"fxp_code": fxp_bic.upper()})
     fxp = result.fetchone()
     
     if not fxp:
@@ -197,8 +197,8 @@ async def withdraw_rate(
     Reference: https://docs.nexusglobalpayments.org/fx-provision/rates-from-third-party-fx-providers
     """
     # Verify FXP exists
-    fxp_query = text("SELECT fxp_id FROM fxps WHERE bic = :bic")
-    result = await db.execute(fxp_query, {"bic": fxp_bic.upper()})
+    fxp_query = text("SELECT fxp_id FROM fxps WHERE fxp_code = :fxp_code")
+    result = await db.execute(fxp_query, {"fxp_code": fxp_bic.upper()})
     fxp = result.fetchone()
     
     if not fxp:
@@ -241,8 +241,8 @@ async def list_active_rates(
     Returns all rates that are currently active and being included in quotes.
     """
     # Verify FXP exists
-    fxp_query = text("SELECT fxp_id, name FROM fxps WHERE bic = :bic")
-    result = await db.execute(fxp_query, {"bic": fxp_bic.upper()})
+    fxp_query = text("SELECT fxp_id, name FROM fxps WHERE fxp_code = :fxp_code")
+    result = await db.execute(fxp_query, {"fxp_code": fxp_bic.upper()})
     fxp = result.fetchone()
     
     if not fxp:
@@ -271,11 +271,11 @@ async def list_active_rates(
     
     result = await db.execute(rates_query, params)
     rates = result.fetchall()
-    
+
     return [
         FXPRateResponse(
-            rate_id=r.rate_id,
-            fxp_id=fxp.fxp_id,
+            rate_id=str(r.rate_id),
+            fxp_id=str(fxp.fxp_id),
             fxp_name=fxp.name,
             source_currency=r.source_currency,
             destination_currency=r.destination_currency,
@@ -299,8 +299,8 @@ async def list_rate_history(
     List historical rates submitted by the FXP (including expired/withdrawn).
     """
     # Verify FXP exists
-    fxp_query = text("SELECT fxp_id, name FROM fxps WHERE bic = :bic")
-    result = await db.execute(fxp_query, {"bic": fxp_bic.upper()})
+    fxp_query = text("SELECT fxp_id, name FROM fxps WHERE fxp_code = :fxp_code")
+    result = await db.execute(fxp_query, {"fxp_code": fxp_bic.upper()})
     fxp = result.fetchone()
     
     if not fxp:
@@ -352,8 +352,8 @@ async def create_psp_relationship(
     Reference: https://docs.nexusglobalpayments.org/fx-provision/rate-improvements
     """
     # Verify FXP exists
-    fxp_query = text("SELECT fxp_id FROM fxps WHERE bic = :bic")
-    result = await db.execute(fxp_query, {"bic": fxp_bic.upper()})
+    fxp_query = text("SELECT fxp_id FROM fxps WHERE fxp_code = :fxp_code")
+    result = await db.execute(fxp_query, {"fxp_code": fxp_bic.upper()})
     fxp = result.fetchone()
     
     if not fxp:
@@ -442,8 +442,8 @@ async def list_psp_relationships(
     List all PSP relationships for the FXP.
     """
     # Verify FXP exists
-    fxp_query = text("SELECT fxp_id FROM fxps WHERE bic = :bic")
-    result = await db.execute(fxp_query, {"bic": fxp_bic.upper()})
+    fxp_query = text("SELECT fxp_id FROM fxps WHERE fxp_code = :fxp_code")
+    result = await db.execute(fxp_query, {"fxp_code": fxp_bic.upper()})
     fxp = result.fetchone()
     
     if not fxp:
@@ -486,8 +486,8 @@ async def delete_psp_relationship(
     Delete a PSP relationship.
     """
     # Verify FXP exists
-    fxp_query = text("SELECT fxp_id FROM fxps WHERE bic = :bic")
-    result = await db.execute(fxp_query, {"bic": fxp_bic.upper()})
+    fxp_query = text("SELECT fxp_id FROM fxps WHERE fxp_code = :fxp_code")
+    result = await db.execute(fxp_query, {"fxp_code": fxp_bic.upper()})
     fxp = result.fetchone()
     
     if not fxp:
@@ -539,8 +539,8 @@ async def list_trades(
     These are sent when the FXP's rate is selected for a payment.
     """
     # Verify FXP exists
-    fxp_query = text("SELECT fxp_id FROM fxps WHERE bic = :bic")
-    result = await db.execute(fxp_query, {"bic": fxp_bic.upper()})
+    fxp_query = text("SELECT fxp_id FROM fxps WHERE fxp_code = :fxp_code")
+    result = await db.execute(fxp_query, {"fxp_code": fxp_bic.upper()})
     fxp = result.fetchone()
     
     if not fxp:
@@ -594,8 +594,8 @@ async def get_liquidity_balances(
     Reference: https://docs.nexusglobalpayments.org/settlement-access-provision/liquidity
     """
     # Verify FXP exists
-    fxp_query = text("SELECT fxp_id FROM fxps WHERE bic = :bic")
-    result = await db.execute(fxp_query, {"bic": fxp_bic.upper()})
+    fxp_query = text("SELECT fxp_id FROM fxps WHERE fxp_code = :fxp_code")
+    result = await db.execute(fxp_query, {"fxp_code": fxp_bic.upper()})
     fxp = result.fetchone()
     
     if not fxp:

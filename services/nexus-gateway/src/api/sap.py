@@ -157,8 +157,8 @@ async def create_nostro_account(
         raise HTTPException(status_code=404, detail=f"SAP with BIC {sap_bic} not found")
     
     # Verify FXP exists
-    fxp_query = text("SELECT fxp_id, name, bic FROM fxps WHERE bic = :bic")
-    result = await db.execute(fxp_query, {"bic": request.fxp_bic.upper()})
+    fxp_query = text("SELECT fxp_id, name, fxp_code FROM fxps WHERE fxp_code = :fxp_code")
+    result = await db.execute(fxp_query, {"fxp_code": request.fxp_bic.upper()})
     fxp = result.fetchone()
     
     if not fxp:
@@ -360,8 +360,8 @@ async def create_reservation(
         raise HTTPException(status_code=404, detail=f"SAP with BIC {sap_bic} not found")
     
     # Verify FXP exists
-    fxp_query = text("SELECT fxp_id, bic FROM fxps WHERE bic = :bic")
-    result = await db.execute(fxp_query, {"bic": request.fxp_bic.upper()})
+    fxp_query = text("SELECT fxp_id, fxp_code FROM fxps WHERE fxp_code = :fxp_code")
+    result = await db.execute(fxp_query, {"fxp_code": request.fxp_bic.upper()})
     fxp = result.fetchone()
     
     if not fxp:
@@ -713,8 +713,8 @@ async def configure_liquidity_alerts(
         raise HTTPException(status_code=404, detail=f"SAP with BIC {sap_bic} not found")
     
     # Verify FXP exists
-    fxp_query = text("SELECT fxp_id FROM fxps WHERE bic = :bic")
-    result = await db.execute(fxp_query, {"bic": fxp_bic.upper()})
+    fxp_query = text("SELECT fxp_id FROM fxps WHERE fxp_code = :fxp_code")
+    result = await db.execute(fxp_query, {"fxp_code": fxp_bic.upper()})
     fxp = result.fetchone()
     
     if not fxp:

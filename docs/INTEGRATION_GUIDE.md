@@ -1,6 +1,6 @@
 # Nexus Sandbox Integration Guide
 
-This guide explains how external developers can plug their own components (FXP, IPS, PSP) into the Nexus Sandbox for testing and validation.
+This guide explains how external developers can plug their own components (FXP, IPSO, PSP, SAP, PDO) into the Nexus Sandbox for testing and validation.
 
 ## 1. Sandbox Overview: Why Protocol Parity Matters
 
@@ -30,8 +30,8 @@ The sandbox includes 6 pre-registered actors for immediate testing:
 | `KASITHBK`   | PSP        | Kasikorn Bank Thailand   | TH      |
 | `MABORKKL`   | PSP        | Maybank Malaysia         | MY      |
 | `FXP-ABC`    | FXP        | ABC Currency Exchange    | SG      |
-| `FAST`       | IPS        | Singapore FAST IPS       | SG      |
-| `PromptPay`  | IPS        | Thailand PromptPay IPS   | TH      |
+| `SGIPSOPS`   | IPSO       | Singapore FAST IPS       | SG      |
+| `THIPSOPS`   | IPSO       | Thailand PromptPay IPS   | TH      |
 
 ---
 
@@ -47,7 +47,7 @@ Content-Type: application/json
 
 {
   "bic": "YOURPSPXXX",
-  "actorType": "PSP",  // FXP | IPS | PSP | SAP | PDO
+  "actorType": "PSP",  // FXP | IPSO | PSP | SAP | PDO
   "name": "Your Organization Name",
   "countryCode": "SG",
   "callbackUrl": "https://your-server.com/nexus/callback"  // Optional
@@ -92,12 +92,12 @@ Content-Type: application/json
 
 ## 3. Connectivity Models
 
-### Direct Participants (FXP, IPS)
+### Direct Participants (FXP, IPSO)
 
 | Actor Type | Connection | Protocol | Callback Support |
 |------------|------------|----------|------------------|
 | **FXP**    | Direct to Nexus Gateway | HTTPS REST API | ✅ Supported |
-| **IPS**    | Direct to Nexus Gateway | ISO 20022 / VPN | ✅ Supported |
+| **IPSO**   | Direct to Nexus Gateway | ISO 20022 / VPN | ✅ Supported |
 
 **FXP Integration Flow:**
 1. Register your FXP via `/v1/actors/register`.
@@ -108,14 +108,14 @@ Content-Type: application/json
 
 | Actor Type | Connection | Protocol | Callback Support |
 |------------|------------|----------|------------------|
-| **PSP**    | Via Domestic IPS | Domestic Standard | ❌ Via IPS |
-| **SAP**    | Via Domestic IPS | Domestic Standard | ❌ Via IPS |
-| **PDO**    | Via Domestic IPS | ISO 20022 API | ❌ Via IPS |
+| **PSP**    | Via Domestic IPSO | Domestic Standard | ❌ Via IPSO |
+| **SAP**    | Via Domestic IPSO | Domestic Standard | ❌ Via IPSO |
+| **PDO**    | Via Domestic IPSO | ISO 20022 API | ❌ Via IPSO |
 
 **PSP Integration Flow:**
-1. Connect to your simulated domestic IPS endpoint (e.g., `ips-sg`).
+1. Connect to your simulated domestic IPSO endpoint (e.g., `ips-sg`).
 2. Send `pacs.008` messages for payment initiation.
-3. Receive `pacs.002` status responses from IPS.
+3. Receive `pacs.002` status responses from IPSO.
 
 ---
 
@@ -628,7 +628,7 @@ This sends a test callback with a valid HMAC signature to your registered URL.
 | Assumption | Description |
 |------------|-------------|
 | A25 | Self-service registration via `callbackUrl` |
-| A26 | Direct connectivity for FXP/IPS only |
+| A26 | Direct connectivity for FXP/IPSO only |
 | A27 | In-memory registry for sandbox simplicity |
 
 For the complete list, see `docs/assumptions/09_actor_integration.md`.

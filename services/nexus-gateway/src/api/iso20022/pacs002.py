@@ -24,7 +24,7 @@ from ...db import get_db
 from ...config import settings
 from .. import validation as xsd_validation
 
-router = APIRouter(prefix="/v1/iso20022", tags=["ISO 20022 Messages"])
+router = APIRouter(tags=["ISO 20022 Messages"])
 
 
 from ..schemas import (
