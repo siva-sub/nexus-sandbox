@@ -1,0 +1,32 @@
+run = "bash replit-start.sh"
+language = "python3"
+entrypoint = "replit-start.sh"
+
+[env]
+DATABASE_URL = "postgresql://nexus:nexus_password@localhost:5432/nexus_sandbox"
+REDIS_URL = "redis://localhost:6379"
+JWT_SECRET = "replit-dev-secret-not-for-production"
+QUOTE_VALIDITY_SECONDS = "600"
+PAYMENT_TIMEOUT_SECONDS = "60"
+PYTHONPATH = "/home/runner/${REPL_SLUG}/services/nexus-gateway"
+
+[[ports]]
+localPort = 3000
+externalPort = 80
+
+[[ports]]
+localPort = 8000
+externalPort = 8000
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash replit-start.sh"
+waitForPort = 3000

@@ -109,8 +109,5 @@ nohup.out
 server.log
 *.out
 
-# Replit
-.replit
+# Replit backup files
 .replit.backup
-replit.md
-replit.nix
