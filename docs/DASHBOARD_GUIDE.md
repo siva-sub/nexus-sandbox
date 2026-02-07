@@ -39,6 +39,10 @@ The dashboard simulates all five actor types in the Nexus ecosystem:
 - Submit payment with full ISO 20022 pacs.008
 - View pacs.002 confirmation
 
+**Enhanced UI Components**:
+- **FeeCard**: G20 alignment bar, dual sender/receiver fee tables, 3-tier exchange rates (Market, Customer, Effective), quote countdown
+- **LifecycleAccordion**: 3-phase collapsible view (Payment Setup → Quoting & FX → Processing & Settlement) with ISO message badges
+
 **Mandatory Fields in pacs.008**:
 - `AccptncDtTm` - Acceptance Date Time
 - `InstrPrty` - Instruction Priority (HIGH=25s, NORM=4hr)
@@ -48,6 +52,26 @@ The dashboard simulates all five actor types in the Nexus ecosystem:
 - `RmtInf` - Payment Reference (sender message)
 
 **Reference**: [Payment Setup](https://docs.nexusglobalpayments.org/payment-setup/)
+
+---
+
+## 🎮 Interactive Demo (`/demo`)
+
+**Purpose**: One-click automated demo of the complete payment lifecycle.
+
+**Lifecycle Steps Covered**: 1–17 (automated)
+
+**Features**:
+- **Quick Demo**: Executes full payment in ~10 seconds with pre-filled data
+- **Live API Mode**: Toggle to use real form inputs step by step
+- **Register Actor**: Register custom actors before sending
+- **Happy & Unhappy Flows**: Toggle 9 scenario codes (AB04, TM01, DUPL, etc.)
+- **FeeCard**: Embedded Pre-Transaction Disclosure with G20 bar, dual fee tables, exchange rates
+- **Lifecycle Accordion**: 3-phase visual (Payment Setup, Quoting & FX, Processing & Settlement)
+- **Status Badge**: Dynamic `ACSC` (success) or `RJCT` (rejection) with ISO reason code
+- **Payment Explorer Link**: Direct navigation to `/explorer?uetr=...`
+
+**Reference**: [ADR-014 Protocol Parity Interactive Demo](./adr/ADR-014-protocol-parity-interactive-demo.md)
 
 ---
 
@@ -254,7 +278,18 @@ The dashboard simulates all five actor types in the Nexus ecosystem:
 - Payment SLA settings
 - Mock data configuration
 - Logging verbosity
-- Theme (light/dark)
+- Purge demo payments
+
+---
+
+## 🌙 Theme Support
+
+The dashboard supports both **light** and **dark** color schemes:
+
+- Click the 🌙/☀️ toggle in the top-right header
+- All components use Mantine's `light-dark()` CSS function for automatic adaptation
+- Cards, panels, tables, and lifecycle views all adjust seamlessly
+- Preference persists via local storage
 
 ---
 

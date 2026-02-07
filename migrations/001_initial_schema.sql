@@ -317,12 +317,23 @@ CREATE TABLE payments (
 
 COMMENT ON TABLE payments IS 'Payment records with UETR as primary key. Reference: https://docs.nexusglobalpayments.org/payment-processing/key-points';
 
--- Monthly partitions
+-- Monthly partitions (2026)
 CREATE TABLE payments_2026_02 PARTITION OF payments
     FOR VALUES FROM ('2026-02-01') TO ('2026-03-01');
-
 CREATE TABLE payments_2026_03 PARTITION OF payments
     FOR VALUES FROM ('2026-03-01') TO ('2026-04-01');
+CREATE TABLE payments_2026_04 PARTITION OF payments
+    FOR VALUES FROM ('2026-04-01') TO ('2026-05-01');
+CREATE TABLE payments_2026_05 PARTITION OF payments
+    FOR VALUES FROM ('2026-05-01') TO ('2026-06-01');
+CREATE TABLE payments_2026_06 PARTITION OF payments
+    FOR VALUES FROM ('2026-06-01') TO ('2026-07-01');
+CREATE TABLE payments_2026_q3 PARTITION OF payments
+    FOR VALUES FROM ('2026-07-01') TO ('2026-10-01');
+CREATE TABLE payments_2026_q4 PARTITION OF payments
+    FOR VALUES FROM ('2026-10-01') TO ('2027-01-01');
+-- Safety: catch-all for dates outside defined ranges
+CREATE TABLE payments_default PARTITION OF payments DEFAULT;
 
 -- Indexes
 CREATE INDEX idx_payments_status ON payments(status);
@@ -353,12 +364,23 @@ CREATE TABLE payment_events (
 
 COMMENT ON TABLE payment_events IS 'Event store for payment lifecycle events';
 
--- Monthly partitions
+-- Monthly partitions (2026)
 CREATE TABLE payment_events_2026_02 PARTITION OF payment_events
     FOR VALUES FROM ('2026-02-01') TO ('2026-03-01');
-
 CREATE TABLE payment_events_2026_03 PARTITION OF payment_events
     FOR VALUES FROM ('2026-03-01') TO ('2026-04-01');
+CREATE TABLE payment_events_2026_04 PARTITION OF payment_events
+    FOR VALUES FROM ('2026-04-01') TO ('2026-05-01');
+CREATE TABLE payment_events_2026_05 PARTITION OF payment_events
+    FOR VALUES FROM ('2026-05-01') TO ('2026-06-01');
+CREATE TABLE payment_events_2026_06 PARTITION OF payment_events
+    FOR VALUES FROM ('2026-06-01') TO ('2026-07-01');
+CREATE TABLE payment_events_2026_q3 PARTITION OF payment_events
+    FOR VALUES FROM ('2026-07-01') TO ('2026-10-01');
+CREATE TABLE payment_events_2026_q4 PARTITION OF payment_events
+    FOR VALUES FROM ('2026-10-01') TO ('2027-01-01');
+-- Safety: catch-all for dates outside defined ranges
+CREATE TABLE payment_events_default PARTITION OF payment_events DEFAULT;
 
 -- Indexes
 CREATE INDEX idx_events_uetr ON payment_events(uetr);

@@ -79,6 +79,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 15s
     deploy:
       resources:
         limits:
@@ -127,6 +128,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
+
 
 networks:
   frontend:

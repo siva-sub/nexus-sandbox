@@ -89,8 +89,8 @@ def parse_pacs008(xml_content: str) -> dict:
             "uetr": get_text(".//UETR") or get_text(".//doc:UETR"),
             "messageId": get_text(".//MsgId") or get_text(".//doc:MsgId"),
             "endToEndId": get_text(".//EndToEndId") or get_text(".//doc:EndToEndId"),
-            # Quote ID per docs: AgrdRate/QtId is the primary source
-            "quoteId": get_text(".//AgrdRate/QtId") or get_text(".//doc:AgrdRate/doc:QtId") or get_text(".//XchgRateInf/CtrctId") or get_text(".//doc:XchgRateInf/doc:CtrctId") or get_text(".//InstrId") or get_text(".//doc:InstrId"),
+            # Quote ID per docs: AgrdRate/QtId is the primary source, RgltryRptg/Dtls/Inf for Nexus custom
+            "quoteId": get_text(".//AgrdRate/QtId") or get_text(".//doc:AgrdRate/doc:QtId") or get_text(".//XchgRateInf/CtrctId") or get_text(".//doc:XchgRateInf/doc:CtrctId") or get_text(".//RgltryRptg/Dtls/Inf") or get_text(".//doc:RgltryRptg/doc:Dtls/doc:Inf") or get_text(".//InstrId") or get_text(".//doc:InstrId"),
             "exchangeRate": get_text(".//PreAgrdXchgRate") or get_text(".//doc:PreAgrdXchgRate") or get_text(".//XchgRate") or get_text(".//doc:XchgRate"),
             "settlementAmount": get_text(".//IntrBkSttlmAmt") or get_text(".//doc:IntrBkSttlmAmt"),
             "settlementCurrency": get_text(".//IntrBkSttlmAmt/@Ccy"),
@@ -98,10 +98,10 @@ def parse_pacs008(xml_content: str) -> dict:
             "purposeCode": get_text(".//Purp/Cd") or get_text(".//doc:Purp/doc:Cd"),
             "acceptanceDateTime": get_text(".//AccptncDtTm") or get_text(".//doc:AccptncDtTm"),
             "debtorName": get_text(".//Dbtr/Nm") or get_text(".//doc:Dbtr/doc:Nm"),
-            "debtorAccount": get_text(".//DbtrAcct/Id/IBAN") or get_text(".//DbtrAcct/Id/Othr/Id") or get_text(".//doc:DbtrAcct/doc:Id/doc:IBAN"),
+            "debtorAccount": get_text(".//DbtrAcct/Id/IBAN") or get_text(".//doc:DbtrAcct/doc:Id/doc:IBAN") or get_text(".//DbtrAcct/Id/Othr/Id") or get_text(".//doc:DbtrAcct/doc:Id/doc:Othr/doc:Id"),
             "debtorAgentBic": get_text(".//DbtrAgt//BICFI") or get_text(".//doc:DbtrAgt//doc:BICFI"),
             "creditorName": get_text(".//Cdtr/Nm") or get_text(".//doc:Cdtr/doc:Nm"),
-            "creditorAccount": get_text(".//CdtrAcct/Id/IBAN") or get_text(".//CdtrAcct/Id/Othr/Id") or get_text(".//doc:CdtrAcct/doc:Id/doc:IBAN"),
+            "creditorAccount": get_text(".//CdtrAcct/Id/IBAN") or get_text(".//doc:CdtrAcct/doc:Id/doc:IBAN") or get_text(".//CdtrAcct/Id/Othr/Id") or get_text(".//doc:CdtrAcct/doc:Id/doc:Othr/doc:Id"),
             "creditorAgentBic": get_text(".//CdtrAgt//BICFI") or get_text(".//doc:CdtrAgt//doc:BICFI"),
             "instructedCurrency": get_text(".//InstdAmt/@Ccy"),
             "intermediaryAgent1Bic": get_text(".//IntrmyAgt1//BICFI") or get_text(".//doc:IntrmyAgt1//doc:BICFI"),
@@ -111,7 +111,7 @@ def parse_pacs008(xml_content: str) -> dict:
             "nbOfTxs": get_text(".//NbOfTxs") or get_text(".//doc:NbOfTxs"),
             # Settlement and clearing info per documentation
             "settlementMethod": get_text(".//SttlmInf/SttlmMtd") or get_text(".//doc:SttlmInf/doc:SttlmMtd"),
-            "clearingSystem": get_text(".//SttlmInf/ClrSys/Prtry") or get_text(".//doc:SttlmInf/doc:ClrSys/doc:Prtry") or get_text(".//ClrSys/Cd") or get_text(".//doc:ClrSys/doc:Cd"),
+            "clearingSystem": get_text(".//SttlmInf/ClrSys/Prtry") or get_text(".//doc:SttlmInf/doc:ClrSys/doc:Prtry") or get_text(".//SttlmInf/ClrSys/Cd") or get_text(".//doc:SttlmInf/doc:ClrSys/doc:Cd") or get_text(".//ClrSys/Cd") or get_text(".//doc:ClrSys/doc:Cd"),
             # Instruction Priority (NORM or HIGH) per documentation
             "instructionPriority": get_text(".//InstrPrty") or get_text(".//doc:InstrPrty"),
             # Charges information per documentation
@@ -292,7 +292,7 @@ async def validate_pacs008(parsed: dict, db: AsyncSession) -> PaymentValidationR
                 q.fxp_id,
                 source_sap.bic as source_sap_bic,
                 dest_sap.bic as dest_sap_bic,
-                ips.ips_code as dest_ips_code
+                ips.clearing_system_id as dest_ips_code
             FROM quotes q
             LEFT JOIN fxp_sap_accounts source_acc ON q.fxp_id = source_acc.fxp_id AND q.source_currency = source_acc.currency_code
             LEFT JOIN saps source_sap ON source_acc.sap_id = source_sap.sap_id
@@ -302,8 +302,12 @@ async def validate_pacs008(parsed: dict, db: AsyncSession) -> PaymentValidationR
             WHERE q.quote_id = :quote_id
         """)
         
-        result = await db.execute(quote_query, {"quote_id": quote_id})
-        quote = result.fetchone()
+        try:
+            result = await db.execute(quote_query, {"quote_id": quote_id})
+            quote = result.fetchone()
+        except Exception as e:
+            logger.warning(f"Quote lookup failed for {quote_id}: {e}")
+            quote = None
         
         if not quote:
             errors.append(f"Quote {quote_id} not found")
@@ -647,7 +651,7 @@ async def process_pacs008(
     # Step 1: XSD Schema Validation
     xsd_result = xsd_validation.validate_pacs008(xml_content)
     if not xsd_result.valid:
-        failed_uetr = xsd_validation.safe_extract_uetr(xml_content) or f"UNKNOWN-{uuid4().hex[:8]}"
+        failed_uetr = xsd_validation.safe_extract_uetr(xml_content) or str(uuid4())
         await store_payment_event(
             db=db,
             uetr=failed_uetr,

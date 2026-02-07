@@ -357,7 +357,7 @@ Follow this step-by-step guide to validate your external component:
 2. **Retrieve Reference XML**: Copy the baseline payload from [MESSAGE_EXAMPLES.md](./MESSAGE_EXAMPLES.md).
 3. **Submit a Payment**: Send a `pacs.008` to `POST /v1/iso20022/pacs008`.
 4. **Trigger Unhappy Flows**: Use the trigger values in Section 7.4 to ensure your error handling is compliant.
-5. **Verify Lifecycle Trace**: Confirm the transaction reaches **ACCC** status in the explorer.
+5. **Verify Lifecycle Trace**: Confirm the transaction reaches **ACSC** (Settlement Confirmed) status in the explorer.
 6. **Audit XML Transformations**: Use the Message Observatory API to confirm `Agent Swapping` occurred correctly for your corridor.
 
 ---
@@ -387,7 +387,7 @@ View your transaction lifecycle at:
 | Quote Retrieval | FXP | `GET /v1/fxp/rates` | Valid rates with finalRate |
 | Proxy Resolution | IPS→PDO | `POST /v1/addressing/resolve` | account + BIC returned |
 | Payment Instruction | IPS | `POST /v1/iso20022/pacs008` | ACSP status, callback URL |
-| Settlement Confirmation | All | Callback to `pacs002Endpoint` | ACCC status in pacs.002 |
+| Settlement Confirmation | All | Callback to `pacs002Endpoint` | ACSC status in pacs.002 |
 
 ### 5.4. Unhappy Flow Testing
 
@@ -430,7 +430,7 @@ In Nexus Release 1, return payments use `pacs.008` with the original UETR in rem
 ```
 
 **Testing Steps:**
-1. Complete a payment successfully (ACCC status)
+1. Complete a payment successfully (ACSC status)
 2. Note the original UETR
 3. Submit a new `pacs.008` with `NexusOrgnlUETR:` prefix
 4. Verify `RETURN_LINKED` event in Message Observatory

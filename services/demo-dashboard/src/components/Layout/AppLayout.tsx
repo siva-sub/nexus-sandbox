@@ -61,7 +61,7 @@ const navItems: NavItem[] = [
         icon: IconCircleX,
         label: "Demo Scenarios",
         path: "/demo",
-        description: "Unhappy flows testing",
+        description: "Happy & unhappy flows",
     },
     {
         icon: IconBuilding,
@@ -157,19 +157,19 @@ export function AppLayout() {
             padding="md"
         >
             <AppShell.Header>
-                <Group h="100%" px="md" justify="space-between">
-                    <Group>
+                <Group h="100%" px="md" justify="space-between" wrap="nowrap">
+                    <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
                         <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
                         <Link to="/" style={{ textDecoration: 'none' }}>
-                            <Title order={3} c="nexusPurple">
+                            <Title order={3} c="nexusPurple" style={{ whiteSpace: 'nowrap', fontSize: 'clamp(0.85rem, 3vw, 1.17rem)' }}>
                                 🌐 NEXUS SANDBOX
                             </Title>
                         </Link>
-                        <Badge variant="light" color="nexusPurple" size="sm">
+                        <Badge variant="light" color="nexusPurple" size="sm" visibleFrom="sm">
                             Demo
                         </Badge>
                     </Group>
-                    <Group>
+                    <Group gap="xs" wrap="nowrap">
                         <Badge
                             color={MOCK_ENABLED ? "blue" : apiStatus === "connected" ? "green" : apiStatus === "disconnected" ? "red" : "gray"}
                             variant="dot"
@@ -190,7 +190,7 @@ export function AppLayout() {
             </AppShell.Header>
 
             <AppShell.Navbar p="md">
-                <AppShell.Section grow>
+                <AppShell.Section grow style={{ overflowY: 'auto' }}>
                     {navItems.map((item) => (
                         <NavLink
                             key={item.path}
@@ -212,8 +212,18 @@ export function AppLayout() {
                         component="a"
                         href="/api/docs"
                         target="_blank"
-                        label="API Docs"
-                        description="Swagger/OpenAPI"
+                        label="Swagger UI"
+                        description="Interactive API docs"
+                        leftSection={<IconApi size={20} />}
+                        rightSection={<IconExternalLink size={14} />}
+                        mb={4}
+                    />
+                    <NavLink
+                        component="a"
+                        href="/api/redoc"
+                        target="_blank"
+                        label="ReDoc"
+                        description="API reference docs"
                         leftSection={<IconApi size={20} />}
                         rightSection={<IconExternalLink size={14} />}
                         mb="xs"

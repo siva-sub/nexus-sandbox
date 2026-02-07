@@ -486,8 +486,14 @@ async def get_address_type_inputs(
     generator = PROXY_TYPE_GENERATORS[address_type_upper]
     inputs = generator(country_upper)
     
-    # Get display name from first input's label
-    display_name = inputs[0].label.title.get("en", address_type_upper)
+    # Country-aware display names that include local IPS name
+    IPS_SUFFIX = {
+        "SG": "PayNow", "TH": "PromptPay", "MY": "DuitNow",
+        "ID": "BI-FAST", "IN": "UPI", "PH": "InstaPay",
+    }
+    suffix = IPS_SUFFIX.get(country_upper, "")
+    base_name = inputs[0].label.title.get("en", address_type_upper)
+    display_name = f"{base_name} ({suffix})" if suffix else base_name
     
     return AddressTypeInputsResponse(
         addressTypeId=address_type_upper,
@@ -519,7 +525,13 @@ async def list_country_address_types(
         if proxy_type in PROXY_TYPE_GENERATORS:
             generator = PROXY_TYPE_GENERATORS[proxy_type]
             inputs = generator(country_upper)
-            display_name = inputs[0].label.title.get("en", proxy_type)
+            IPS_SUFFIX = {
+                "SG": "PayNow", "TH": "PromptPay", "MY": "DuitNow",
+                "ID": "BI-FAST", "IN": "UPI", "PH": "InstaPay",
+            }
+            suffix = IPS_SUFFIX.get(country_upper, "")
+            base_name = inputs[0].label.title.get("en", proxy_type)
+            display_name = f"{base_name} ({suffix})" if suffix else base_name
             types.append({
                 "addressTypeId": proxy_type,
                 "addressTypeName": display_name,
@@ -558,7 +570,14 @@ async def get_country_address_types_and_inputs(
         if proxy_type in PROXY_TYPE_GENERATORS:
             generator = PROXY_TYPE_GENERATORS[proxy_type]
             inputs = generator(country_upper)
-            display_name = inputs[0].label.title.get("en", proxy_type)
+            # Country-aware display names including local IPS
+            IPS_SUFFIX = {
+                "SG": "PayNow", "TH": "PromptPay", "MY": "DuitNow",
+                "ID": "BI-FAST", "IN": "UPI", "PH": "InstaPay",
+            }
+            suffix = IPS_SUFFIX.get(country_upper, "")
+            base_name = inputs[0].label.title.get("en", proxy_type)
+            display_name = f"{base_name} ({suffix})" if suffix else base_name
             
             address_types.append(AddressTypeInputsResponse(
                 addressTypeId=proxy_type,

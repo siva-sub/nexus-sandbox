@@ -108,17 +108,25 @@ export async function confirmSenderApproval(quoteId: string): Promise<import("..
 // Address types and inputs API (Combined)
 export async function getAddressTypes(countryCode: string) {
     if (MOCK_ENABLED) {
+        const DISPLAY_NAMES: Record<string, string> = {
+            MOBI: "Mobile Number", MBNO: "Mobile Number",
+            NRIC: "National ID / NRIC", NIDN: "National ID",
+            UEN: "Business UEN", EWAL: "e-Wallet ID",
+            EMAL: "Email Address", VPA: "UPI Address (VPA)",
+            NIK: "National ID (NIK)", BIZN: "Business Registration",
+            PASS: "Passport Number", ACCT: "Bank Account",
+        };
         const pdo = mock.mockPDOs.find(p => p.country_code === countryCode);
         return {
             countryCode,
             addressTypes: (pdo?.supported_proxy_types || []).map(type => ({
                 addressTypeId: type,
-                addressTypeName: type === "MBNO" ? "Mobile Number" : type,
+                addressTypeName: DISPLAY_NAMES[type] || type,
                 inputs: [{
                     fieldName: "value",
-                    displayLabel: "Value",
+                    displayLabel: DISPLAY_NAMES[type] || "Value",
                     dataType: "text",
-                    attributes: { required: true }
+                    attributes: { name: "accountOrProxyId", required: true, type: "text", placeholder: "" }
                 }]
             }))
         };
@@ -145,16 +153,47 @@ export async function getAddressTypes(countryCode: string) {
     };
 }
 
+// Proxy search (autocomplete suggestions from registered contacts)
+export async function searchProxies(params: {
+    countryCode?: string;
+    proxyType?: string;
+    q?: string;
+}): Promise<{ results: Array<{ proxyType: string; proxyValue: string; displayName: string; bankName: string }>; total: number }> {
+    const { countryCode = "", proxyType = "", q = "" } = params;
+    if (MOCK_ENABLED) {
+        // Return mock proxy registrations filtered by search
+        const allProxies = [
+            { proxyType: "MBNO", proxyValue: "+6281234567890", displayName: "B*** Santoso", bankName: "Bank Mandiri", country: "ID" },
+            { proxyType: "MBNO", proxyValue: "+6287654321000", displayName: "S*** Wulandari", bankName: "Bank BCA", country: "ID" },
+            { proxyType: "EMAL", proxyValue: "budi@example.co.id", displayName: "B*** Santoso", bankName: "Bank Mandiri", country: "ID" },
+            { proxyType: "MOBI", proxyValue: "+6591234567", displayName: "T*** Lim", bankName: "DBS Bank", country: "SG" },
+            { proxyType: "MOBI", proxyValue: "+6598765432", displayName: "J*** Tan", bankName: "OCBC Bank", country: "SG" },
+            { proxyType: "MOBI", proxyValue: "+66891234567", displayName: "S*** Chaiyaphum", bankName: "Kasikorn Bank", country: "TH" },
+            { proxyType: "MBNO", proxyValue: "+919123456789", displayName: "R*** Kumar", bankName: "State Bank of India", country: "IN" },
+            { proxyType: "VPA", proxyValue: "rajesh@upi", displayName: "R*** Kumar", bankName: "State Bank of India", country: "IN" },
+        ];
+        const filtered = allProxies.filter(p =>
+            (!countryCode || p.country === countryCode) &&
+            (!proxyType || p.proxyType === proxyType) &&
+            (!q || p.proxyValue.includes(q) || p.displayName.toLowerCase().includes(q.toLowerCase()))
+        );
+        return { results: filtered, total: filtered.length };
+    }
+    const qs = new URLSearchParams({ country_code: countryCode, proxy_type: proxyType, q }).toString();
+    return fetchJSON(`/v1/addressing/search?${qs}`);
+}
+
 // Proxy resolution (acmt.023)
 // Accepts object parameter to match hook call pattern
 export async function resolveProxy(params: {
+    sourceCountry?: string;
     destinationCountry: string;
     proxyType: string;
     proxyValue: string;
     structuredData?: Record<string, string>;
     scenarioCode?: string;
 }): Promise<import("../types").ProxyResolutionResult> {
-    const { destinationCountry, proxyType, proxyValue, structuredData, scenarioCode } = params;
+    const { sourceCountry, destinationCountry, proxyType, proxyValue, structuredData, scenarioCode } = params;
     if (MOCK_ENABLED) {
         // Handle unhappy flow scenarios in mock mode
         if (scenarioCode && scenarioCode.toLowerCase() !== 'happy') {
@@ -197,6 +236,7 @@ export async function resolveProxy(params: {
         {
             method: "POST",
             body: JSON.stringify({
+                sourceCountry: sourceCountry || 'SG',
                 destinationCountry,
                 proxyType,
                 proxyValue,
@@ -257,7 +297,8 @@ export interface Pacs008Response {
  * - ' (apostrophe) -> &apos;
  */
 function escapeXml(str: string): string {
-    return str
+    const s = String(str ?? '');
+    return s
         .replace(/&/g, '&amp;')   // Must be first to avoid double-escaping
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
@@ -281,7 +322,7 @@ function buildPacs008Xml(params: Pacs008Params): string {
     // Use provided values or generate defaults
     const acceptanceDateTime = params.acceptanceDateTime || now;
     const instructionPriority = params.instructionPriority || "NORM";
-    const clearingSystemCode = params.clearingSystemCode || "";
+    const clearingSystemCode = params.clearingSystemCode || "NGP";
 
     // Build intermediary agents XML if provided
     let intermediaryAgentsXml = "";
@@ -326,7 +367,7 @@ function buildPacs008Xml(params: Pacs008Params): string {
       <CreDtTm>${now}</CreDtTm>
       <NbOfTxs>1</NbOfTxs>
       <SttlmInf>
-        <SttlmMtd>INDA</SttlmMtd>${clearingSystemCode ? `
+        <SttlmMtd>CLRG</SttlmMtd>${clearingSystemCode ? `
         <ClrSys>
           <Cd>${escapeXml(clearingSystemCode)}</Cd>
         </ClrSys>` : ""}
@@ -334,7 +375,7 @@ function buildPacs008Xml(params: Pacs008Params): string {
     </GrpHdr>
     <CdtTrfTxInf>
       <PmtId>
-        <InstrId>${escapeXml(params.quoteId)}</InstrId>
+        <InstrId>INSTR-${Date.now()}</InstrId>
         <EndToEndId>${endToEndId}</EndToEndId>
         <UETR>${escapeXml(params.uetr)}</UETR>
       </PmtId>
@@ -345,12 +386,7 @@ function buildPacs008Xml(params: Pacs008Params): string {
       <IntrBkSttlmAmt Ccy="${escapeXml(params.sourceCurrency)}">${params.sourceAmount.toFixed(2)}</IntrBkSttlmAmt>
       <IntrBkSttlmDt>${now.split('T')[0]}</IntrBkSttlmDt>
       <InstdAmt Ccy="${escapeXml(params.destinationCurrency)}">${params.destinationAmount.toFixed(2)}</InstdAmt>
-      <XchgRateInformation>
-        <XchgRate>${params.exchangeRate}</XchgRate>
-        <AgrdRate>
-          <QtId>${escapeXml(params.quoteId)}</QtId>
-        </AgrdRate>
-      </XchgRateInformation>
+      <XchgRate>${params.exchangeRate}</XchgRate>
       <ChrgBr>SHAR</ChrgBr>
       <Dbtr>
         <Nm>${escapeXml(params.debtorName)}</Nm>
@@ -382,6 +418,16 @@ function buildPacs008Xml(params: Pacs008Params): string {
           </Othr>
         </Id>
       </CdtrAcct>${remittanceInfoXml}
+      <RgltryRptg>
+        <DbtCdtRptgInd>BOTH</DbtCdtRptgInd>
+        <Authrty>
+          <Nm>NEXUS</Nm>
+        </Authrty>
+        <Dtls>
+          <Cd>NEXUS_QUOTE_ID</Cd>
+          <Inf>${escapeXml(params.quoteId)}</Inf>
+        </Dtls>
+      </RgltryRptg>
     </CdtTrfTxInf>
   </FIToFICstmrCdtTrf>
 </Document>`;
@@ -498,9 +544,11 @@ export async function submitRate(rateData: {
 // Liquidity API
 export async function getLiquidityBalances() {
     if (MOCK_ENABLED) return { balances: mock.mockLiquidityBalances };
-    return fetchJSON<{ balances: import("../types").LiquidityBalance[] }>(
+    // Backend returns list[FxpBalance] directly (flat array)
+    const data = await fetchJSON<import("../types").LiquidityBalance[]>(
         "/v1/liquidity/balances"
     );
+    return { balances: Array.isArray(data) ? data : [] };
 }
 
 export async function getReservations() {
@@ -776,6 +824,175 @@ export interface SAP {
     name: string;
     country_code: string;
     currency_code: string;
+}
+
+// SAP API Functions - Connected to backend endpoints
+export interface NostroAccount {
+    accountId: string;
+    sapId: string;
+    sapName: string;
+    sapBic: string;
+    fxpId: string;
+    fxpName: string;
+    fxpBic: string;
+    currency: string;
+    balance: string;
+    accountNumber: string;
+    status: string;
+    createdAt: string;
+}
+
+export interface SAPReservation {
+    reservationId: string;
+    accountId: string;
+    sapBic: string;
+    fxpBic: string;
+    currency: string;
+    amount: string;
+    uetr: string;
+    status: string;
+    expiresAt: string;
+    createdAt: string;
+}
+
+export interface SAPTransaction {
+    transactionId: string;
+    accountId: string;
+    type: string;
+    amount: string;
+    currency: string;
+    reference: string;
+    createdAt: string;
+}
+
+export interface ReconciliationReport {
+    date: string;
+    sapId: string;
+    sapName: string;
+    currency: string;
+    openingBalance: string;
+    totalCredits: string;
+    totalDebits: string;
+    closingBalance: string;
+    transactionCount: number;
+}
+
+export async function getSAPNostroAccounts(): Promise<NostroAccount[]> {
+    if (MOCK_ENABLED) {
+        return [
+            { accountId: "mock-1", sapId: "s1", sapName: "DBS Bank", sapBic: "DBSSSGSG", fxpId: "f1", fxpName: "GlobalFX", fxpBic: "FXP-GLOBAL", currency: "SGD", balance: "500000.00", accountNumber: "NOSTRO-001", status: "ACTIVE", createdAt: new Date().toISOString() },
+            { accountId: "mock-2", sapId: "s1", sapName: "DBS Bank", sapBic: "DBSSSGSG", fxpId: "f1", fxpName: "GlobalFX", fxpBic: "FXP-GLOBAL", currency: "THB", balance: "12500000.00", accountNumber: "NOSTRO-002", status: "ACTIVE", createdAt: new Date().toISOString() },
+        ];
+    }
+    return fetchJSON<NostroAccount[]>("/v1/sap/nostro-accounts");
+}
+
+export async function getSAPReservations(): Promise<SAPReservation[]> {
+    if (MOCK_ENABLED) {
+        return [
+            { reservationId: "res-1", accountId: "a1", sapBic: "DBSSSGSG", fxpBic: "FXP-GLOBAL", currency: "SGD", amount: "10000.00", uetr: "test-uetr", status: "ACTIVE", expiresAt: new Date(Date.now() + 600000).toISOString(), createdAt: new Date().toISOString() },
+        ];
+    }
+    return fetchJSON<SAPReservation[]>("/v1/sap/reservations");
+}
+
+export async function getSAPTransactions(limit?: number): Promise<SAPTransaction[]> {
+    if (MOCK_ENABLED) return [];
+    const params = limit ? `?limit=${limit}` : "";
+    return fetchJSON<SAPTransaction[]>(`/v1/sap/transactions${params}`);
+}
+
+export async function getSAPReconciliation(date?: string): Promise<ReconciliationReport[]> {
+    if (MOCK_ENABLED) return [];
+    const params = date ? `?date=${date}` : "";
+    return fetchJSON<ReconciliationReport[]>(`/v1/sap/reconciliation${params}`);
+}
+
+// FXP API Functions - Connected to backend endpoints
+export interface FXPRate {
+    rateId: string;
+    fxpId: string;
+    sourceCurrency: string;
+    destinationCurrency: string;
+    baseRate: string;
+    spreadBps: number;
+    effectiveRate: string;
+    validUntil: string;
+    status: string;
+}
+
+export interface FXPTrade {
+    tradeId: string;
+    uetr: string;
+    quoteId: string;
+    fxpId: string;
+    sourceCurrency: string;
+    destinationCurrency: string;
+    amount: string;
+    rate: string;
+    timestamp: string;
+}
+
+export interface FXPBalance {
+    sapId: string;
+    sapName: string;
+    sapBic: string;
+    currency: string;
+    totalBalance: string;
+    reservedBalance: string;
+    availableBalance: string;
+    status: string;
+}
+
+export interface PSPRelationship {
+    pspBic: string;
+    pspName: string;
+    tier: string;
+    improvementBps: number;
+}
+
+export async function getFXPRates(): Promise<FXPRate[]> {
+    if (MOCK_ENABLED) {
+        return [
+            { rateId: "r-1", fxpId: "f1", sourceCurrency: "SGD", destinationCurrency: "THB", baseRate: "26.4521", spreadBps: 25, effectiveRate: "26.3860", validUntil: new Date(Date.now() + 60000).toISOString(), status: "ACTIVE" },
+            { rateId: "r-2", fxpId: "f1", sourceCurrency: "SGD", destinationCurrency: "MYR", baseRate: "3.4123", spreadBps: 30, effectiveRate: "3.4021", validUntil: new Date(Date.now() + 45000).toISOString(), status: "ACTIVE" },
+        ];
+    }
+    return fetchJSON<FXPRate[]>("/v1/fxp/rates");
+}
+
+export async function getFXPTrades(limit?: number): Promise<FXPTrade[]> {
+    if (MOCK_ENABLED) return [];
+    const params = limit ? `?limit=${limit}` : "";
+    return fetchJSON<FXPTrade[]>(`/v1/fxp/trades${params}`);
+}
+
+export async function getFXPLiquidity(): Promise<FXPBalance[]> {
+    if (MOCK_ENABLED) {
+        return [
+            { sapId: "s1", sapName: "DBS Bank", sapBic: "DBSSSGSG", currency: "SGD", totalBalance: "500000.00", reservedBalance: "50000.00", availableBalance: "450000.00", status: "ACTIVE" },
+        ];
+    }
+    return fetchJSON<FXPBalance[]>("/v1/fxp/liquidity");
+}
+
+export async function getFXPPSPRelationships(): Promise<PSPRelationship[]> {
+    if (MOCK_ENABLED) {
+        return [
+            { pspBic: "DBSSSGSG", pspName: "DBS Bank SG", tier: "PREMIUM", improvementBps: 5 },
+            { pspBic: "BKKBTHBK", pspName: "Bangkok Bank TH", tier: "STANDARD", improvementBps: 0 },
+        ];
+    }
+    return fetchJSON<PSPRelationship[]>("/v1/fxp/psp-relationships");
+}
+
+export async function getFXPRateHistory(corridor?: string, limit?: number): Promise<FXPRate[]> {
+    if (MOCK_ENABLED) return [];
+    const params = new URLSearchParams();
+    if (corridor) params.set("corridor", corridor);
+    if (limit) params.set("limit", limit.toString());
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return fetchJSON<FXPRate[]>(`/v1/fxp/rates/history${qs}`);
 }
 
 // Demo Data Management APIs

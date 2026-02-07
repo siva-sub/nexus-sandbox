@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
     Title,
     Card,
@@ -12,23 +12,31 @@ import {
     Table,
     Tabs,
     SimpleGrid,
-    ActionIcon,
-    Tooltip,
     Anchor,
     Breadcrumbs,
     Alert,
+    Loader,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import {
     IconArrowsExchange,
     IconPlus,
     IconRefresh,
-    IconTrash,
     IconClock,
     IconInfoCircle,
+    IconHistory,
+    IconUsers,
 } from "@tabler/icons-react";
-import { useEffect } from "react";
 import { DevDebugPanel } from "../components/DevDebugPanel";
+import {
+    getFXPRates,
+    getFXPTrades,
+    getFXPPSPRelationships,
+    submitRate,
+    type FXPRate,
+    type FXPTrade,
+    type PSPRelationship,
+} from "../services/api";
 
 function useCountdown(targetDate: string) {
     const [timeLeft, setTimeLeft] = useState<number>(0);
@@ -51,14 +59,6 @@ function CountdownText({ targetDate }: { targetDate: string }) {
     return <Text size="sm">{seconds}s</Text>;
 }
 
-
-// Demo FX rates data
-const DEMO_RATES = [
-    { rateId: "R-001", sourceCurrency: "SGD", destinationCurrency: "THB", rate: 26.4521, spreadBps: 25, fxpName: "GlobalFX", validUntil: new Date(Date.now() + 60000).toISOString(), status: "ACTIVE" as const },
-    { rateId: "R-002", sourceCurrency: "SGD", destinationCurrency: "MYR", rate: 3.4123, spreadBps: 30, fxpName: "GlobalFX", validUntil: new Date(Date.now() + 45000).toISOString(), status: "ACTIVE" as const },
-    { rateId: "R-003", sourceCurrency: "SGD", destinationCurrency: "PHP", rate: 42.1234, spreadBps: 35, fxpName: "GlobalFX", validUntil: new Date(Date.now() + 30000).toISOString(), status: "ACTIVE" as const },
-];
-
 const CURRENCIES = [
     { value: "SGD", label: "🇸🇬 SGD - Singapore Dollar" },
     { value: "THB", label: "🇹🇭 THB - Thai Baht" },
@@ -68,18 +68,20 @@ const CURRENCIES = [
     { value: "INR", label: "🇮🇳 INR - Indian Rupee" },
 ];
 
-// Demo amount tier data - Per Nexus Spec:
-// Improvements are POSITIVE values that ADD to the rate (better for customer)
-// Reference: https://docs.nexusglobalpayments.org/fx-provision/rates-from-third-party-fx-providers/improving-rates-for-larger-transactions
+// Demo amount tier data - Per Nexus Spec
 const DEMO_AMOUNT_TIERS = [
     { tierId: "T-001", minAmount: 0, maxAmount: 1000, improvementBps: 0, label: "Standard" },
     { tierId: "T-002", minAmount: 1000, maxAmount: 10000, improvementBps: 5, label: "Volume" },
-    { tierId: "T-003", minAmount: 10000, maxAmount: null, improvementBps: 10, label: "Premium" },
+    { tierId: "T-003", minAmount: 10000, maxAmount: null as number | null, improvementBps: 10, label: "Premium" },
 ];
 
 export function FXPPage() {
-    const [rates, setRates] = useState(DEMO_RATES);
+    const [rates, setRates] = useState<FXPRate[]>([]);
+    const [trades, setTrades] = useState<FXPTrade[]>([]);
+    const [pspRelationships, setPspRelationships] = useState<PSPRelationship[]>([]);
     const [amountTiers, setAmountTiers] = useState(DEMO_AMOUNT_TIERS);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [newRate, setNewRate] = useState({
         sourceCurrency: "SGD",
         destinationCurrency: "MYR",
@@ -88,31 +90,65 @@ export function FXPPage() {
     });
     const [newTier, setNewTier] = useState({ minAmount: 0, maxAmount: 1000, improvementBps: 0 });
 
-    const handleSubmitRate = () => {
+    useEffect(() => {
+        loadData();
+    }, []);
+
+    async function loadData() {
+        try {
+            setLoading(true);
+            const [ratesData, tradesData, pspData] = await Promise.all([
+                getFXPRates(),
+                getFXPTrades(20),
+                getFXPPSPRelationships(),
+            ]);
+            setRates(ratesData);
+            setTrades(tradesData);
+            setPspRelationships(pspData);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Failed to load FXP data");
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    const handleSubmitRate = async () => {
         if (newRate.sourceCurrency === newRate.destinationCurrency) {
             notifications.show({ title: "Invalid Corridor", message: "Source and destination currencies must be different", color: "red" });
             return;
         }
-        setRates([
-            ...rates,
-            {
-                rateId: `R-${Date.now()}`,
+        try {
+            await submitRate({
                 sourceCurrency: newRate.sourceCurrency,
                 destinationCurrency: newRate.destinationCurrency,
                 rate: newRate.rate,
                 spreadBps: newRate.spread,
-                fxpName: "Demo FXP",
-                validUntil: new Date(Date.now() + 60000).toISOString(),
-                status: "ACTIVE",
-            },
-        ]);
-        notifications.show({ title: "Rate Submitted", message: `${newRate.sourceCurrency} → ${newRate.destinationCurrency} @ ${newRate.rate}`, color: "green" });
+            });
+            notifications.show({ title: "Rate Submitted", message: `${newRate.sourceCurrency} → ${newRate.destinationCurrency} @ ${newRate.rate}`, color: "green" });
+            // Reload rates
+            const freshRates = await getFXPRates();
+            setRates(freshRates);
+        } catch (err) {
+            notifications.show({ title: "Error", message: err instanceof Error ? err.message : "Failed to submit rate", color: "red" });
+        }
     };
 
-    const handleWithdraw = (rateId: string) => {
-        setRates(rates.filter((r) => r.rateId !== rateId));
-        notifications.show({ title: "Rate Withdrawn", message: `Removed ${rateId}`, color: "yellow" });
-    };
+    if (loading) {
+        return (
+            <Stack align="center" justify="center" h={400}>
+                <Loader size="lg" />
+                <Text c="dimmed">Loading FXP data...</Text>
+            </Stack>
+        );
+    }
+
+    if (error) {
+        return (
+            <Alert color="red" title="Error loading FXP data">
+                {error}
+            </Alert>
+        );
+    }
 
     return (
         <Stack gap="md">
@@ -170,69 +206,62 @@ export function FXPPage() {
                 </Card>
                 <Card withBorder p="md" radius="md">
                     <Group justify="space-between">
-                        <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Volume Tiers</Text>
-                        <Badge size="sm" color="violet" variant="light">Config</Badge>
+                        <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Trades</Text>
+                        <Badge size="sm" color="violet" variant="light">History</Badge>
                     </Group>
-                    <Text size="xl" fw={700} mt="xs">{amountTiers.length}</Text>
-                    <Text size="xs" c="dimmed">Improvement tiers</Text>
+                    <Text size="xl" fw={700} mt="xs">{trades.length}</Text>
+                    <Text size="xs" c="dimmed">Executed</Text>
                 </Card>
             </SimpleGrid>
 
 
             <Tabs defaultValue="active">
                 <Tabs.List>
-                    <Tabs.Tab value="active">Active Rates</Tabs.Tab>
-                    <Tabs.Tab value="submit">Submit Rate</Tabs.Tab>
+                    <Tabs.Tab value="active" leftSection={<IconArrowsExchange size={14} />}>Active Rates</Tabs.Tab>
+                    <Tabs.Tab value="submit" leftSection={<IconPlus size={14} />}>Submit Rate</Tabs.Tab>
+                    <Tabs.Tab value="trades" leftSection={<IconHistory size={14} />}>Trade History</Tabs.Tab>
+                    <Tabs.Tab value="psp" leftSection={<IconUsers size={14} />}>PSP Relationships</Tabs.Tab>
                     <Tabs.Tab value="tiers">Tier Management</Tabs.Tab>
                 </Tabs.List>
 
                 <Tabs.Panel value="active" pt="md">
                     <Card>
+                        <Group justify="space-between" mb="md">
+                            <Title order={5}>Active FX Rates</Title>
+                            <Button size="xs" variant="subtle" leftSection={<IconRefresh size={14} />} onClick={loadData}>
+                                Refresh
+                            </Button>
+                        </Group>
                         <Table>
                             <Table.Thead>
                                 <Table.Tr>
                                     <Table.Th>Corridor</Table.Th>
-                                    <Table.Th>Rate</Table.Th>
+                                    <Table.Th>Base Rate</Table.Th>
                                     <Table.Th>Spread (bps)</Table.Th>
+                                    <Table.Th>Effective</Table.Th>
                                     <Table.Th>Expires</Table.Th>
                                     <Table.Th>Status</Table.Th>
-                                    <Table.Th>Actions</Table.Th>
                                 </Table.Tr>
                             </Table.Thead>
                             <Table.Tbody>
                                 {rates.map((rate) => (
                                     <Table.Tr key={rate.rateId}>
-                                        <Table.Td>
-                                            <Text fw={500}>{rate.sourceCurrency} → {rate.destinationCurrency}</Text>
-                                        </Table.Td>
-                                        <Table.Td>{rate.rate.toFixed(4)}</Table.Td>
+                                        <Table.Td><Text fw={500}>{rate.sourceCurrency} → {rate.destinationCurrency}</Text></Table.Td>
+                                        <Table.Td>{parseFloat(rate.baseRate).toFixed(4)}</Table.Td>
                                         <Table.Td>{rate.spreadBps}</Table.Td>
+                                        <Table.Td fw={600}>{parseFloat(rate.effectiveRate).toFixed(4)}</Table.Td>
                                         <Table.Td>
                                             <Group gap="xs">
                                                 <IconClock size={14} />
-                                                <CountdownText targetDate={rate.validUntil} />
+                                                {rate.validUntil ? <CountdownText targetDate={rate.validUntil} /> : "—"}
                                             </Group>
                                         </Table.Td>
-
-                                        <Table.Td>
-                                            <Badge color="green" size="sm">{rate.status}</Badge>
-                                        </Table.Td>
-                                        <Table.Td>
-                                            <Group gap="xs">
-                                                <Tooltip label="Refresh">
-                                                    <ActionIcon variant="subtle" color="blue">
-                                                        <IconRefresh size={16} />
-                                                    </ActionIcon>
-                                                </Tooltip>
-                                                <Tooltip label="Withdraw">
-                                                    <ActionIcon variant="subtle" color="red" onClick={() => handleWithdraw(rate.rateId)}>
-                                                        <IconTrash size={16} />
-                                                    </ActionIcon>
-                                                </Tooltip>
-                                            </Group>
-                                        </Table.Td>
+                                        <Table.Td><Badge color="green" size="sm">{rate.status}</Badge></Table.Td>
                                     </Table.Tr>
                                 ))}
+                                {rates.length === 0 && (
+                                    <Table.Tr><Table.Td colSpan={6}><Text c="dimmed" ta="center" py="md">No active rates</Text></Table.Td></Table.Tr>
+                                )}
                             </Table.Tbody>
                         </Table>
                     </Card>
@@ -313,142 +342,140 @@ export function FXPPage() {
                                         {(newRate.rate * (1 - newRate.spread / 10000)).toFixed(4)} {newRate.destinationCurrency}
                                     </Text>
                                 </Group>
-                                <Group justify="space-between">
-                                    <Text c="dimmed">Valid for</Text>
-                                    <Text fw={500}>600 seconds (10 min)</Text>
-                                </Group>
                             </Stack>
                         </Card>
                     </SimpleGrid>
                 </Tabs.Panel>
 
-                <Tabs.Panel value="tiers" pt="md">
-                    <SimpleGrid cols={{ base: 1, md: 2 }}>
-                        {/* Transaction Amount Tiers */}
-                        <Card>
-                            <Title order={5} mb="md">Transaction Amount Tiers</Title>
-                            <Text c="dimmed" size="sm" mb="md">
-                                Configure rate improvements based on transaction volume. Higher amounts get better rates.
-                            </Text>
-                            <Table>
-                                <Table.Thead>
-                                    <Table.Tr>
-                                        <Table.Th>Amount Range</Table.Th>
-                                        <Table.Th>Tier</Table.Th>
-                                        <Table.Th>Improvement</Table.Th>
-                                        <Table.Th>Actions</Table.Th>
+                <Tabs.Panel value="trades" pt="md">
+                    <Card>
+                        <Title order={5} mb="md">Trade Execution History</Title>
+                        <Table>
+                            <Table.Thead>
+                                <Table.Tr>
+                                    <Table.Th>Corridor</Table.Th>
+                                    <Table.Th>Amount</Table.Th>
+                                    <Table.Th>Rate</Table.Th>
+                                    <Table.Th>UETR</Table.Th>
+                                    <Table.Th>Timestamp</Table.Th>
+                                </Table.Tr>
+                            </Table.Thead>
+                            <Table.Tbody>
+                                {trades.map((trade) => (
+                                    <Table.Tr key={trade.tradeId}>
+                                        <Table.Td fw={500}>{trade.sourceCurrency} → {trade.destinationCurrency}</Table.Td>
+                                        <Table.Td>{parseFloat(trade.amount).toFixed(4)}</Table.Td>
+                                        <Table.Td>{parseFloat(trade.rate).toFixed(4)}</Table.Td>
+                                        <Table.Td><Text size="xs" ff="monospace">{trade.uetr?.substring(0, 12)}...</Text></Table.Td>
+                                        <Table.Td><Text size="xs">{new Date(trade.timestamp).toLocaleString()}</Text></Table.Td>
                                     </Table.Tr>
-                                </Table.Thead>
-                                <Table.Tbody>
-                                    {amountTiers.map((tier) => (
-                                        <Table.Tr key={tier.tierId}>
-                                            <Table.Td>
-                                                <Text size="sm">
-                                                    {tier.minAmount.toLocaleString()} - {tier.maxAmount ? tier.maxAmount.toLocaleString() : "∞"}
-                                                </Text>
-                                            </Table.Td>
-                                            <Table.Td>
-                                                <Badge color={tier.improvementBps > 0 ? "green" : "gray"}>
-                                                    {tier.label}
-                                                </Badge>
-                                            </Table.Td>
-                                            <Table.Td>
-                                                <Text c={tier.improvementBps > 0 ? "green" : "dimmed"} fw={500}>
-                                                    +{tier.improvementBps} bps
-                                                </Text>
-                                            </Table.Td>
-                                            <Table.Td>
-                                                <Button size="xs" variant="subtle">Edit</Button>
-                                            </Table.Td>
-                                        </Table.Tr>
-                                    ))}
-                                </Table.Tbody>
-                            </Table>
-                            <Group mt="md">
-                                <NumberInput
-                                    label="Min Amount"
-                                    size="xs"
-                                    value={newTier.minAmount}
-                                    onChange={(v) => setNewTier({ ...newTier, minAmount: Number(v) })}
-                                    style={{ flex: 1 }}
-                                />
-                                <NumberInput
-                                    label="Max Amount"
-                                    size="xs"
-                                    value={newTier.maxAmount}
-                                    onChange={(v) => setNewTier({ ...newTier, maxAmount: Number(v) })}
-                                    style={{ flex: 1 }}
-                                />
-                                <NumberInput
-                                    label="Improvement (bps)"
-                                    size="xs"
-                                    value={newTier.improvementBps}
-                                    onChange={(v) => setNewTier({ ...newTier, improvementBps: Number(v) })}
-                                    style={{ flex: 1 }}
-                                />
-                                <Button
-                                    size="xs"
-                                    mt="md"
-                                    onClick={() => {
-                                        setAmountTiers([...amountTiers, {
-                                            tierId: `T-${Date.now()}`,
-                                            minAmount: newTier.minAmount,
-                                            maxAmount: newTier.maxAmount,
-                                            improvementBps: newTier.improvementBps,
-                                            label: newTier.improvementBps >= 10 ? "Premium" : newTier.improvementBps > 0 ? "Volume" : "Custom"
-                                        }]);
-                                        notifications.show({ title: "Tier Added", message: "Amount tier created", color: "green" });
-                                    }}
-                                >
-                                    Add Tier
-                                </Button>
-                            </Group>
-                        </Card>
+                                ))}
+                                {trades.length === 0 && (
+                                    <Table.Tr><Table.Td colSpan={5}><Text c="dimmed" ta="center" py="md">No trades yet</Text></Table.Td></Table.Tr>
+                                )}
+                            </Table.Tbody>
+                        </Table>
+                    </Card>
+                </Tabs.Panel>
 
-                        {/* PSP Relationship Tiers */}
-                        <Card>
-                            <Title order={5} mb="md">PSP Relationship Tiers</Title>
-                            <Text c="dimmed" size="sm" mb="md">
-                                Configure rate improvements for specific PSP partnerships.
-                            </Text>
-                            <Table>
-                                <Table.Thead>
-                                    <Table.Tr>
-                                        <Table.Th>PSP</Table.Th>
-                                        <Table.Th>Tier</Table.Th>
-                                        <Table.Th>Improvement</Table.Th>
-                                        <Table.Th>Actions</Table.Th>
-                                    </Table.Tr>
-                                </Table.Thead>
-                                <Table.Tbody>
-                                    <Table.Tr>
-                                        <Table.Td>Demo Bank SG</Table.Td>
-                                        <Table.Td><Badge>PREMIUM</Badge></Table.Td>
-                                        <Table.Td><Text c="green" fw={500}>+5 bps</Text></Table.Td>
+                <Tabs.Panel value="psp" pt="md">
+                    <Card>
+                        <Title order={5} mb="md">PSP Relationship Tiers</Title>
+                        <Text c="dimmed" size="sm" mb="md">
+                            Rate improvements for specific PSP partnerships, loaded from backend.
+                        </Text>
+                        <Table>
+                            <Table.Thead>
+                                <Table.Tr>
+                                    <Table.Th>PSP</Table.Th>
+                                    <Table.Th>BIC</Table.Th>
+                                    <Table.Th>Tier</Table.Th>
+                                    <Table.Th>Improvement</Table.Th>
+                                </Table.Tr>
+                            </Table.Thead>
+                            <Table.Tbody>
+                                {pspRelationships.map((rel) => (
+                                    <Table.Tr key={rel.pspBic}>
+                                        <Table.Td fw={500}>{rel.pspName}</Table.Td>
+                                        <Table.Td><Text size="xs" ff="monospace">{rel.pspBic}</Text></Table.Td>
                                         <Table.Td>
-                                            <Button size="xs" variant="subtle">Edit</Button>
+                                            <Badge color={rel.tier === "PREMIUM" ? "blue" : rel.tier === "VOLUME" ? "violet" : "gray"}>
+                                                {rel.tier}
+                                            </Badge>
+                                        </Table.Td>
+                                        <Table.Td>
+                                            <Text c={rel.improvementBps > 0 ? "green" : "dimmed"} fw={500}>
+                                                +{rel.improvementBps} bps
+                                            </Text>
                                         </Table.Td>
                                     </Table.Tr>
-                                    <Table.Tr>
-                                        <Table.Td>Partner Bank TH</Table.Td>
-                                        <Table.Td><Badge color="gray">STANDARD</Badge></Table.Td>
-                                        <Table.Td><Text c="dimmed">0 bps</Text></Table.Td>
+                                ))}
+                                {pspRelationships.length === 0 && (
+                                    <Table.Tr><Table.Td colSpan={4}><Text c="dimmed" ta="center" py="md">No PSP relationships configured</Text></Table.Td></Table.Tr>
+                                )}
+                            </Table.Tbody>
+                        </Table>
+                    </Card>
+                </Tabs.Panel>
+
+                <Tabs.Panel value="tiers" pt="md">
+                    <Card>
+                        <Title order={5} mb="md">Transaction Amount Tiers</Title>
+                        <Text c="dimmed" size="sm" mb="md">
+                            Configure rate improvements based on transaction volume. Higher amounts get better rates.
+                        </Text>
+                        <Table>
+                            <Table.Thead>
+                                <Table.Tr>
+                                    <Table.Th>Amount Range</Table.Th>
+                                    <Table.Th>Tier</Table.Th>
+                                    <Table.Th>Improvement</Table.Th>
+                                </Table.Tr>
+                            </Table.Thead>
+                            <Table.Tbody>
+                                {amountTiers.map((tier) => (
+                                    <Table.Tr key={tier.tierId}>
                                         <Table.Td>
-                                            <Button size="xs" variant="subtle">Edit</Button>
+                                            <Text size="sm">
+                                                {tier.minAmount.toLocaleString()} - {tier.maxAmount ? tier.maxAmount.toLocaleString() : "∞"}
+                                            </Text>
+                                        </Table.Td>
+                                        <Table.Td>
+                                            <Badge color={tier.improvementBps > 0 ? "green" : "gray"}>
+                                                {tier.label}
+                                            </Badge>
+                                        </Table.Td>
+                                        <Table.Td>
+                                            <Text c={tier.improvementBps > 0 ? "green" : "dimmed"} fw={500}>
+                                                +{tier.improvementBps} bps
+                                            </Text>
                                         </Table.Td>
                                     </Table.Tr>
-                                    <Table.Tr>
-                                        <Table.Td>MYR Bank MY</Table.Td>
-                                        <Table.Td><Badge color="blue">VOLUME</Badge></Table.Td>
-                                        <Table.Td><Text c="green" fw={500}>+3 bps</Text></Table.Td>
-                                        <Table.Td>
-                                            <Button size="xs" variant="subtle">Edit</Button>
-                                        </Table.Td>
-                                    </Table.Tr>
-                                </Table.Tbody>
-                            </Table>
-                        </Card>
-                    </SimpleGrid>
+                                ))}
+                            </Table.Tbody>
+                        </Table>
+                        <Group mt="md">
+                            <NumberInput label="Min Amount" size="xs" value={newTier.minAmount} onChange={(v) => setNewTier({ ...newTier, minAmount: Number(v) })} style={{ flex: 1 }} />
+                            <NumberInput label="Max Amount" size="xs" value={newTier.maxAmount} onChange={(v) => setNewTier({ ...newTier, maxAmount: Number(v) })} style={{ flex: 1 }} />
+                            <NumberInput label="Improvement (bps)" size="xs" value={newTier.improvementBps} onChange={(v) => setNewTier({ ...newTier, improvementBps: Number(v) })} style={{ flex: 1 }} />
+                            <Button
+                                size="xs"
+                                mt="md"
+                                onClick={() => {
+                                    setAmountTiers([...amountTiers, {
+                                        tierId: `T-${Date.now()}`,
+                                        minAmount: newTier.minAmount,
+                                        maxAmount: newTier.maxAmount,
+                                        improvementBps: newTier.improvementBps,
+                                        label: newTier.improvementBps >= 10 ? "Premium" : newTier.improvementBps > 0 ? "Volume" : "Custom"
+                                    }]);
+                                    notifications.show({ title: "Tier Added", message: "Amount tier created", color: "green" });
+                                }}
+                            >
+                                Add Tier
+                            </Button>
+                        </Group>
+                    </Card>
                 </Tabs.Panel>
             </Tabs>
 

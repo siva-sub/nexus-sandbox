@@ -73,6 +73,7 @@ Watch the **Quick Flow** in action - a full end-to-end payment simulation in und
 
 ### 📖 Documentation Links
 - [**Usage Guide**](./docs/USAGE_GUIDE.md): Start here to simulate your first payment.
+- [**Dashboard Guide**](./docs/DASHBOARD_GUIDE.md): Navigation and UI reference for every page.
 - [**Integration Guide**](./docs/INTEGRATION_GUIDE.md): Connect your own PSP/FXP/IPS to the sandbox.
 - [**API Reference**](./docs/api/API_REFERENCE.md): Complete list of available endpoints.
 - [**Message Examples**](./docs/MESSAGE_EXAMPLES.md): Full ISO 20022 XML samples for all 11 types.
@@ -333,22 +334,23 @@ def verify_callback(payload: str, signature: str, secret: str, timestamp: str) -
 ### 1. Interactive Demo (⭐ Featured)
 **Fully End-to-End Functional** - `http://localhost:8080/demo`
 - ✅ **Real ISO 20022 XML Submission**: Constructs valid pacs.008.001.08 XML and submits to backend API
-- ✅ **Database Persistence**: All payments (ACCC + RJCT) stored in PostgreSQL
+- ✅ **Database Persistence**: All payments (ACSC + RJCT) stored in PostgreSQL
 - ✅ **Payment Explorer Integration**: Full UETR with "View in Explorer" link
 - ✅ **4-Step Guided Journey**:
   1. **Payment Details**: Source/destination countries, amount type, recipient proxy
   2. **Select Quote**: Display quotes from FXPs with exchange rates and expiry countdown
-  3. **Confirm Payment**: Pre-Transaction Disclosure (PTD) breakdown with fee transparency
-  4. **Lifecycle Trace**: Visual timeline showing payment journey (happy or rejection)
+  3. **Confirm Payment**: FeeCard with G20 alignment bar, dual fee tables, 3-tier exchange rates
+  4. **Lifecycle Trace**: 3-phase Accordion (Payment Setup → Quoting & FX → Processing & Settlement)
 - ✅ **9 Unhappy Flow Scenarios**: AB04, TM01, DUPL, AM04, AM02, BE23, AC04, RR04
 - ✅ **Demo Data Management**: Purge test payments via Settings page
+- ✅ **Light/Dark Mode**: Full theme support with `light-dark()` CSS adaptation
 
 ### 2. Payment Explorer
 **Transaction History & Message Viewer** - `http://localhost:8080/explorer`
 - Search by UETR to view complete payment details
 - 17-step lifecycle visualization
 - ISO 20022 message inspection (pacs.008, pacs.002 XML)
-- Status tracking with reason codes (ACCC, RJCT, AB04, TM01, etc.)
+- Status tracking with reason codes (ACSC, RJCT, AB04, TM01, etc.)
 - Debug panel with event timeline
 
 ### 3. Global Payment Dashboard (Landing Page)
@@ -501,24 +503,29 @@ pytest tests/test_quotes.py -v
 
 ```
 nexus-sandbox/
-├── docker-compose.yml          # Service orchestration
+├── docker-compose.yml          # Full stack orchestration
+├── docker-compose.lite.yml     # Lightweight profile
 ├── start.sh                    # One-command launcher
 ├── services/
-│   ├── demo-dashboard/         # Frontend UI
+│   ├── demo-dashboard/         # React + TypeScript + Mantine UI
+│   │   ├── src/
+│   │   │   ├── pages/          # Route pages (Payment, Demo, Explorer...)
+│   │   │   ├── components/     # Shared components (FeeCard, LifecycleAccordion...)
+│   │   │   ├── hooks/          # Custom React hooks (usePaymentLifecycle...)
+│   │   │   ├── services/       # API layer (api.ts, mockApi.ts)
+│   │   │   └── types/          # TypeScript interfaces
 │   │   ├── Dockerfile
-│   │   ├── nginx.conf
-│   │   ├── index.html
-│   │   ├── api.js             # API integration
-│   │   └── screens/           # Dashboard pages
-│   ├── nexus-gateway/          # Core API (FastAPI)
-│   ├── psp-simulator/          # PSP mockups
-│   ├── ips-simulator/          # IPS mockups
-│   ├── fxp-simulator/          # FX provider
-│   ├── sap-simulator/          # Settlement provider
-│   └── pdo-simulator/          # Proxy directory
-├── migrations/                 # Database schema
-├── specs/                      # ISO 20022 XSDs
-└── docs/                       # Documentation
+│   │   └── nginx.conf
+│   ├── nexus-gateway/          # Core API (FastAPI + Python)
+│   │   └── src/api/            # Route modules (iso20022, actors, quotes...)
+│   ├── psp-simulator/          # PSP mock services
+│   ├── ips-simulator/          # IPS mock services
+│   ├── fxp-simulator/          # FX provider mock
+│   ├── sap-simulator/          # Settlement provider mock
+│   └── pdo-simulator/          # Proxy directory mock
+├── migrations/                 # Database schema + seed data
+├── specs/                      # 100 ISO 20022 XSD schemas
+└── docs/                       # Full documentation suite
 ```
 
 ---

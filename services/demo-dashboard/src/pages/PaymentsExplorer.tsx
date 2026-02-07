@@ -36,6 +36,7 @@ import {
     ActionIcon,
     CopyButton,
     Tooltip,
+    Accordion,
 } from "@mantine/core";
 import {
     IconSearch,
@@ -47,6 +48,10 @@ import {
     IconTimeline,
     IconReceiptDollar,
     IconBuilding,
+    IconCircleDot,
+    IconCircle,
+    IconCircleX,
+    IconClipboardList,
 } from "@tabler/icons-react";
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -54,38 +59,124 @@ import { MessageInspector } from "../components/MessageInspector";
 import { DevDebugPanel } from "../components/DevDebugPanel";
 import { getPaymentStatus, getPaymentMessages } from "../services/api";
 
-// 17-step lifecycle phases
-const LIFECYCLE_STEPS = [
-    { step: 1, phase: "Setup", description: "Sender selects country" },
-    { step: 2, phase: "Setup", description: "Sender enters amount" },
-    { step: 3, phase: "Quotes", description: "PSP requests FX quotes" },
-    { step: 4, phase: "Quotes", description: "Nexus aggregates rates" },
-    { step: 5, phase: "Quotes", description: "PSP selects best quote" },
-    { step: 6, phase: "Quotes", description: "Display rate to Sender" },
-    { step: 7, phase: "Addressing", description: "Sender enters recipient" },
-    { step: 8, phase: "Addressing", description: "Proxy resolution (acmt.023)" },
-    { step: 9, phase: "Addressing", description: "Confirmation of Payee" },
-    { step: 10, phase: "Compliance", description: "Sanctions screening (Source)" },
-    { step: 11, phase: "Compliance", description: "Sanctions screening (Dest)" },
-    { step: 12, phase: "Approval", description: "Sender confirms payment" },
-    { step: 13, phase: "Execution", description: "Get intermediary agents" },
-    { step: 14, phase: "Execution", description: "Construct pacs.008" },
-    { step: 15, phase: "Execution", description: "Submit to Source IPS" },
-    { step: 16, phase: "Execution", description: "Forward via Nexus" },
-    { step: 17, phase: "Confirmation", description: "Receive pacs.002" },
+// 17-step lifecycle phases (matching LifecycleAccordion from Payment page)
+const EXPLORER_LIFECYCLE_PHASES = [
+    {
+        phase: 1,
+        name: "Payment Setup",
+        steps: [
+            { id: 1, name: "Select Country", apiCall: "GET /countries", isoMessage: "-" },
+            { id: 2, name: "Define Amount", apiCall: "Validation", isoMessage: "-" },
+        ],
+    },
+    {
+        phase: 2,
+        name: "Quoting",
+        steps: [
+            { id: 3, name: "Request Quotes", apiCall: "GET /quotes", isoMessage: "-" },
+            { id: 4, name: "Rate Improvements", apiCall: "GET /rates", isoMessage: "-" },
+            { id: 5, name: "Compare Offers", apiCall: "Calculation", isoMessage: "-" },
+            { id: 6, name: "Lock Quote", apiCall: "Selection", isoMessage: "-" },
+        ],
+    },
+    {
+        phase: 3,
+        name: "Addressing & Compliance",
+        steps: [
+            { id: 7, name: "Enter Address", apiCall: "GET /address-types", isoMessage: "-" },
+            { id: 8, name: "Resolve Proxy", apiCall: "POST /addressing/resolve", isoMessage: "acmt.023/024" },
+            { id: 9, name: "Sanctions Check", apiCall: "Internal Check", isoMessage: "-" },
+            { id: 10, name: "Pre-Transaction Disclosure", apiCall: "GET /fees-and-amounts", isoMessage: "-" },
+            { id: 11, name: "Sender Approval", apiCall: "User Confirmation", isoMessage: "-" },
+        ],
+    },
+    {
+        phase: 4,
+        name: "Processing & Settlement",
+        steps: [
+            { id: 12, name: "Debtor Authorization", apiCall: "Bank Auth", isoMessage: "-" },
+            { id: 13, name: "Get Intermediaries", apiCall: "GET /intermediary-agents", isoMessage: "-" },
+            { id: 14, name: "Construct pacs.008", apiCall: "Message Build", isoMessage: "pacs.008" },
+            { id: 15, name: "Submit to IPS", apiCall: "POST /iso20022/pacs008", isoMessage: "pacs.008" },
+            { id: 16, name: "Settlement Chain", apiCall: "Nexus → Dest IPS → SAP", isoMessage: "-" },
+        ],
+    },
+    {
+        phase: 5,
+        name: "Completion",
+        steps: [
+            { id: 17, name: "Accept & Notify", apiCall: "Response Processing", isoMessage: "pacs.002" },
+        ],
+    },
 ];
+
+/**
+ * Determine the step at which a payment reached or failed.
+ * For ACSC/ACCC: all 17 steps completed.
+ * For RJCT: completed up to step 15 (submitted), failed at step 15.
+ * For other statuses: assume in-progress.
+ */
+function getCompletedStep(status: string): number {
+    if (status === "ACSC" || status === "ACCC") return 17;
+    if (status === "RJCT") return 15; // Failed at submission
+    if (status === "ACSP" || status === "PDNG") return 14; // In progress
+    return 0;
+}
+
+function getFailedStep(status: string): number | null {
+    if (status === "RJCT") return 15;
+    return null;
+}
+
+/**
+ * Extract the rejection reason code from pacs.002 XML in the messages array.
+ * Fallback for when the backend status API doesn't return statusReasonCode.
+ */
+function extractReasonFromMessages(msgs: Message[]): { code: string; description: string } | null {
+    const pacs002 = msgs.find((m) => m.messageType === "pacs.002");
+    if (!pacs002?.xml) return null;
+
+    // Extract <TxSts> and <Rsn><Cd> from pacs.002 XML
+    const codeMatch = pacs002.xml.match(/<(?:\w+:)?Cd>([A-Z0-9]+)<\/(?:\w+:)?Cd>/);
+    const txSts = pacs002.xml.match(/<(?:\w+:)?TxSts>(\w+)<\/(?:\w+:)?TxSts>/);
+
+    if (txSts?.[1] !== "RJCT") return null;
+
+    const code = codeMatch?.[1] || "RJCT";
+    // Map reason codes to descriptions
+    const descriptions: Record<string, string> = {
+        AB04: "Quote Expired / Exchange Rate Mismatch",
+        TM01: "Timeout - Invalid Cut Off Time",
+        DUPL: "Duplicate Payment Detected",
+        AC01: "Incorrect Account Number",
+        MS02: "Not Specified Reason - Customer Generated",
+        RR04: "Regulatory Reason",
+        AM04: "Insufficient Funds",
+        BE23: "Missing Creditor Address",
+        RC11: "Invalid Settlement Account Provider",
+        AB03: "Timeout - Transaction Aborted",
+    };
+
+    return { code, description: descriptions[code] || `Rejected (${code})` };
+}
 
 // Status code descriptions
 const STATUS_CODES: Record<string, { description: string; color: string }> = {
-    ACCC: { description: "Settlement Completed", color: "green" },
+    ACSC: { description: "Settlement Completed", color: "green" },
+    ACCC: { description: "Settlement Completed (Legacy)", color: "green" },
     ACSP: { description: "Settlement in Progress", color: "blue" },
     RJCT: { description: "Rejected", color: "red" },
     PDNG: { description: "Pending", color: "yellow" },
     AB03: { description: "Timeout - Aborted", color: "orange" },
     AB04: { description: "Quote Expired", color: "orange" },
     AM04: { description: "Insufficient Funds", color: "red" },
+    TM01: { description: "Timeout - Invalid Cut Off", color: "orange" },
+    DUPL: { description: "Duplicate Payment", color: "red" },
     BE23: { description: "Account Not Found", color: "red" },
     RC11: { description: "Invalid SAP", color: "red" },
+    AC01: { description: "Incorrect Account Number", color: "red" },
+    MS02: { description: "Not Specified Reason Customer", color: "red" },
+    RR04: { description: "Regulatory Reason", color: "red" },
 };
 
 interface PaymentDetails {
@@ -230,7 +321,7 @@ export function PaymentsExplorer() {
                                 Lifecycle
                             </Tabs.Tab>
                             <Tabs.Tab value="messages" leftSection={<IconFileCode size={16} />}>
-                                Messages ({messages.length})
+                                Messages
                             </Tabs.Tab>
                             <Tabs.Tab value="debug" leftSection={<IconBuilding size={16} />}>
                                 Debug Panel
@@ -353,46 +444,83 @@ export function PaymentsExplorer() {
 
                         {/* Lifecycle Tab */}
                         <Tabs.Panel value="lifecycle">
-                            <Card shadow="xs" padding="lg" radius="md" withBorder>
-                                <Title order={4} mb="md">17-Step Payment Lifecycle</Title>
-                                <Timeline active={payment.status === "ACCC" ? 17 : -1} bulletSize={28}>
-                                    {LIFECYCLE_STEPS.map((step) => {
-                                        const phaseColors: Record<string, string> = {
-                                            Setup: "blue",
-                                            Quotes: "violet",
-                                            Addressing: "grape",
-                                            Compliance: "orange",
-                                            Approval: "cyan",
-                                            Execution: "teal",
-                                            Confirmation: "green",
-                                        };
-
-                                        return (
-                                            <Timeline.Item
-                                                key={step.step}
-                                                color={phaseColors[step.phase]}
-                                                title={
-                                                    <Group gap="xs">
-                                                        <Badge size="sm" variant="light">
-                                                            Step {step.step}
-                                                        </Badge>
-                                                        <Text size="sm" fw={500}>
-                                                            {step.description}
-                                                        </Text>
-                                                    </Group>
-                                                }
-                                            >
-                                                <Badge
-                                                    color={phaseColors[step.phase]}
-                                                    variant="outline"
-                                                    size="xs"
-                                                >
-                                                    {step.phase}
-                                                </Badge>
-                                            </Timeline.Item>
-                                        );
-                                    })}
-                                </Timeline>
+                            <Card shadow="sm" padding="lg" radius="md" withBorder>
+                                <Group gap="xs" mb="md">
+                                    <IconClipboardList size={20} color="var(--mantine-color-nexusPurple-filled)" />
+                                    <Title order={5}>Payment Lifecycle</Title>
+                                </Group>
+                                {(() => {
+                                    const completedStep = getCompletedStep(payment.status);
+                                    const failedStep = getFailedStep(payment.status);
+                                    const msgReason = extractReasonFromMessages(messages);
+                                    const rejectionCode = payment.statusReasonCode || msgReason?.code || "RJCT";
+                                    const rejectionDesc = payment.reasonDescription || msgReason?.description || "Payment rejected";
+                                    return (
+                                        <Accordion defaultValue={["1", "2"]} multiple>
+                                            {EXPLORER_LIFECYCLE_PHASES.map(({ phase, name, steps }) => {
+                                                const completedCount = steps.filter((s) => s.id <= completedStep && s.id !== failedStep).length;
+                                                const hasFailed = failedStep !== null && steps.some((s) => s.id === failedStep);
+                                                const hasActive = steps.some((s) => s.id === completedStep && !hasFailed);
+                                                return (
+                                                    <Accordion.Item key={phase} value={String(phase)}>
+                                                        <Accordion.Control>
+                                                            <Group justify="space-between">
+                                                                <Text size="sm" fw={500}>Phase {phase}: {name}</Text>
+                                                                <Badge
+                                                                    size="sm"
+                                                                    color={hasFailed ? "red" : completedCount === steps.length ? "green" : hasActive ? "blue" : "gray"}
+                                                                >
+                                                                    {completedCount}/{steps.length}
+                                                                </Badge>
+                                                            </Group>
+                                                        </Accordion.Control>
+                                                        <Accordion.Panel>
+                                                            <Timeline active={steps.findIndex((s) => s.id > completedStep) - 1} bulletSize={20} lineWidth={2}>
+                                                                {steps.map((step) => {
+                                                                    const isCompleted = step.id <= completedStep && step.id !== failedStep;
+                                                                    const isFailed = step.id === failedStep;
+                                                                    const bulletIcon = isFailed
+                                                                        ? <IconCircleX size={12} />
+                                                                        : isCompleted
+                                                                            ? <IconCircleDot size={12} />
+                                                                            : <IconCircle size={12} />;
+                                                                    const bulletColor = isFailed ? "red" : isCompleted ? "blue" : "gray";
+                                                                    return (
+                                                                        <Timeline.Item
+                                                                            key={step.id}
+                                                                            bullet={bulletIcon}
+                                                                            color={bulletColor}
+                                                                            title={
+                                                                                <Group justify="space-between" align="center" style={{ width: "100%" }}>
+                                                                                    <Group gap="xs">
+                                                                                        <Text size="sm" fw={700}>{step.id}. {step.name}</Text>
+                                                                                        {step.isoMessage !== "-" && (
+                                                                                            <Badge size="xs" variant="outline">{step.isoMessage}</Badge>
+                                                                                        )}
+                                                                                    </Group>
+                                                                                    <Text size="xs" c="dimmed" fs="italic">{step.apiCall}</Text>
+                                                                                </Group>
+                                                                            }
+                                                                        >
+                                                                            {isFailed && (
+                                                                                <Text size="xs" c="red" fw={700} mt={4}>
+                                                                                    ✕ REJECTED: {rejectionCode} — {rejectionDesc}
+                                                                                </Text>
+                                                                            )}
+                                                                            {step.id === 17 && isCompleted && (
+                                                                                <Text size="xs" c="green" fw={700} mt={4}>ACSC: Settlement Confirmed</Text>
+                                                                            )}
+                                                                        </Timeline.Item>
+                                                                    );
+                                                                })}
+                                                            </Timeline>
+                                                        </Accordion.Panel>
+                                                    </Accordion.Item>
+                                                );
+                                            })}
+                                        </Accordion>
+                                    );
+                                })()}
                             </Card>
                         </Tabs.Panel>
 

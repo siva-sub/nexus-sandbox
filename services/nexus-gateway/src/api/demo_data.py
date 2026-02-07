@@ -73,13 +73,13 @@ async def purge_demo_data(
     if cutoff:
         events_count_query = text("""
             SELECT COUNT(*) FROM payment_events 
-            WHERE payment_uetr IN (SELECT uetr FROM payments WHERE created_at < :cutoff)
+            WHERE uetr IN (SELECT uetr FROM payments WHERE created_at < :cutoff)
         """)
         result = await db.execute(events_count_query.bindparams(cutoff=cutoff))
     else:
         result = await db.execute(text("""
             SELECT COUNT(*) FROM payment_events 
-            WHERE payment_uetr IN (SELECT uetr FROM payments)
+            WHERE uetr IN (SELECT uetr FROM payments)
         """))
     counts["payment_events"] = result.scalar() or 0
     
@@ -108,13 +108,13 @@ async def purge_demo_data(
     if cutoff:
         events_delete_query = text("""
             DELETE FROM payment_events 
-            WHERE payment_uetr IN (SELECT uetr FROM payments WHERE created_at < :cutoff)
+            WHERE uetr IN (SELECT uetr FROM payments WHERE created_at < :cutoff)
         """)
         result = await db.execute(events_delete_query.bindparams(cutoff=cutoff))
     else:
         result = await db.execute(text("""
             DELETE FROM payment_events 
-            WHERE payment_uetr IN (SELECT uetr FROM payments)
+            WHERE uetr IN (SELECT uetr FROM payments)
         """))
     deleted["payment_events"] = result.rowcount
     

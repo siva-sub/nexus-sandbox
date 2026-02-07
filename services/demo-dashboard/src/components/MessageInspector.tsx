@@ -65,7 +65,7 @@ const MESSAGE_METADATA: Record<string, {
         displayName: "Payment Status Report",
         step: 17,
         color: "green",
-        description: "Confirmation from Destination PSP (ACCC = success, RJCT = rejected)",
+        description: "Confirmation from Destination PSP (ACSC = success, RJCT = rejected)",
     },
     "acmt.023": {
         displayName: "Identification Verification Request",
@@ -98,6 +98,33 @@ const MESSAGE_METADATA: Record<string, {
         description: "Return of funds to sender",
     },
 };
+
+/**
+ * Extract TxSts (transaction status) from pacs.002 XML
+ * Returns 'RJCT', 'ACSC', etc. or null if not found
+ */
+function extractTxStatus(xml: string): string | null {
+    const match = xml.match(/<TxSts>([^<]+)<\/TxSts>/);
+    return match ? match[1] : null;
+}
+
+/**
+ * Determine the display color for a message based on its content
+ * For pacs.002, parse the XML to check if RJCT or success
+ */
+function getMessageColor(message: { messageType: string; xml: string }): string {
+    const meta = MESSAGE_METADATA[message.messageType];
+    const baseColor = meta?.color || "gray";
+
+    // For pacs.002, determine color from actual status
+    if (message.messageType === "pacs.002" && message.xml) {
+        const txStatus = extractTxStatus(message.xml);
+        if (txStatus === "RJCT") return "red";
+        if (txStatus === "ACSC" || txStatus === "ACCC") return "green";
+    }
+
+    return baseColor;
+}
 
 interface Message {
     messageType: string;
@@ -234,6 +261,7 @@ function MessageCard({ message }: { message: Message }) {
         color: "gray",
         description: "Unknown message type",
     };
+    const dynamicColor = getMessageColor(message);
 
     return (
         <Paper shadow="xs" p="md" radius="md" withBorder>
@@ -247,7 +275,7 @@ function MessageCard({ message }: { message: Message }) {
                     <div>
                         <Group gap={8}>
                             <Text fw={600}>{message.messageType}</Text>
-                            <Badge color={meta.color} size="sm">
+                            <Badge color={dynamicColor} size="sm">
                                 Step {meta.step}
                             </Badge>
                             <Badge
@@ -351,6 +379,16 @@ export function MessageInspector({
         );
     }
 
+    // Deduplicate messages by messageType + direction + xml content
+    // Backend sometimes stores duplicate entries with slightly different timestamps
+    const dedupedMessages = messages.filter((msg, index, arr) =>
+        index === arr.findIndex(m =>
+            m.messageType === msg.messageType &&
+            m.direction === msg.direction &&
+            m.xml === msg.xml
+        )
+    );
+
     return (
         <Card shadow="sm" padding="lg" radius="md" withBorder>
             <Group justify="space-between" mb="md">
@@ -388,14 +426,15 @@ export function MessageInspector({
 
             <Divider mb="md" />
 
-            <Timeline active={messages.length - 1} bulletSize={24} lineWidth={2}>
-                {messages.map((message, index) => {
+            <Timeline active={dedupedMessages.length - 1} bulletSize={24} lineWidth={2}>
+                {dedupedMessages.map((message, index) => {
                     const meta = MESSAGE_METADATA[message.messageType] || {
                         displayName: message.messageType,
                         step: 0,
                         color: "gray",
                         description: "",
                     };
+                    const dynamicColor = getMessageColor(message);
 
                     return (
                         <Timeline.Item
@@ -405,11 +444,11 @@ export function MessageInspector({
                                     ? <IconArrowRight size={12} />
                                     : <IconArrowLeft size={12} />
                             }
-                            color={meta.color}
+                            color={dynamicColor}
                             title={
                                 <Group gap={8}>
                                     <Text fw={600}>{message.messageType}</Text>
-                                    <Badge color={meta.color} size="xs">
+                                    <Badge color={dynamicColor} size="xs">
                                         Step {meta.step}
                                     </Badge>
                                 </Group>

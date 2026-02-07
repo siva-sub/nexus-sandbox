@@ -11,6 +11,7 @@ import {
     Select,
     SegmentedControl,
     TextInput,
+    Autocomplete,
     Badge,
     Table,
     Box,
@@ -32,7 +33,6 @@ import {
 import { notifications } from "@mantine/notifications";
 import {
     IconSend,
-    IconSearch,
     IconCheck,
     IconCircleDot,
     IconCircle,
@@ -55,6 +55,7 @@ import {
     getQuotes,
     getAddressTypes,
     resolveProxy,
+    searchProxies,
     getPreTransactionDisclosure,
     parseQRCode,
     submitPacs008
@@ -102,6 +103,7 @@ export function PaymentPage() {
     // Data state
     const [countries, setCountries] = useState<Country[]>([]);
     const [proxyTypes, setProxyTypes] = useState<import("../types").AddressTypeWithInputs[]>([]);
+    const [proxySuggestions, setProxySuggestions] = useState<string[]>([]);
     const [quotes, setQuotes] = useState<Quote[]>([]);
     const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
     const [feeBreakdown, setFeeBreakdown] = useState<FeeBreakdown | null>(null);
@@ -121,18 +123,18 @@ export function PaymentPage() {
                     if (demoCode === 'AM02') setAmount(50001);
                     if (demoCode === 'BE23') {
                         setSelectedCountry('TH');
-                        setRecipientData({ 'MOBILE': '+66999999999' });
-                        setSelectedProxyType('MOBILE');
+                        setRecipientData({ 'accountOrProxyId': '+66999999999' });
+                        setSelectedProxyType('MOBI');
                     }
                     if (demoCode === 'AC04') {
                         setSelectedCountry('MY');
-                        setRecipientData({ 'MOBILE': '+60999999999' });
-                        setSelectedProxyType('MOBILE');
+                        setRecipientData({ 'accountOrProxyId': '+60999999999' });
+                        setSelectedProxyType('MOBI');
                     }
                     if (demoCode === 'RR04') {
                         setSelectedCountry('ID');
-                        setRecipientData({ 'MOBILE': '+62999999999' });
-                        setSelectedProxyType('MOBILE');
+                        setRecipientData({ 'accountOrProxyId': '+62999999999' });
+                        setSelectedProxyType('MOBI');
                     }
 
                     notifications.show({
@@ -234,7 +236,7 @@ export function PaymentPage() {
                                 amountType
                             );
                             setQuotes(data.quotes);
-                            
+
                             // NEXUS SPEC COMPLIANCE: PSP auto-selects best quote
                             // Per docs: "The PSP does not need to show the list of quotes to the Sender"
                             // Auto-select the quote with best rate (highest when sending, lowest when receiving)
@@ -248,11 +250,11 @@ export function PaymentPage() {
                                         return Number(a.sourceInterbankAmount || 0) - Number(b.sourceInterbankAmount || 0);
                                     }
                                 });
-                                
+
                                 // Auto-select the best quote (PSP selection, not user selection)
                                 const bestQuote = sortedQuotes[0];
                                 setSelectedQuote(bestQuote);
-                                
+
                                 // Fetch fee breakdown for selected quote
                                 try {
                                     const fees = await getPreTransactionDisclosure(bestQuote.quoteId, sourceFeeType);
@@ -346,8 +348,10 @@ export function PaymentPage() {
 
     const handleResolve = async () => {
         const typeData = proxyTypes.find(t => t.value === selectedProxyType);
-        const requiredFields = typeData?.inputs?.map((i: import("../types").AddressTypeInputDetails) => i.attributes.name) || [];
-        const hasAllFields = requiredFields.every((f) => !!recipientData[f]);
+        // Only validate visible (non-hidden) required fields
+        const visibleInputs = typeData?.inputs?.filter((i: import("../types").AddressTypeInputDetails) => !i.attributes?.hidden) || [];
+        const requiredFields = visibleInputs.map((i: import("../types").AddressTypeInputDetails) => i.attributes.name);
+        const hasAllFields = requiredFields.length === 0 || requiredFields.every((f) => !!recipientData[f]);
 
         if (!selectedCountry || !selectedProxyType || !hasAllFields) {
             notifications.show({ title: "Validation", message: "Please fill all required recipient fields", color: "yellow" });
@@ -363,6 +367,7 @@ export function PaymentPage() {
             // For sandbox, we use the first field as the main "proxy value"
             const primaryValue = recipientData[requiredFields[0]];
             const result = await resolveProxy({
+                sourceCountry: sourceCountry || 'SG',
                 destinationCountry: selectedCountry,
                 proxyType: selectedProxyType,
                 proxyValue: primaryValue,
@@ -469,12 +474,16 @@ export function PaymentPage() {
 
             // Set proxy type and value
             if (result.merchantAccountInfo.proxyType) {
-                setSelectedProxyType(result.merchantAccountInfo.proxyType);
+                // Map QR proxy types to address type IDs
+                const qrProxyToAddressType: Record<string, string> = {
+                    'MBNO': 'MOBI', 'MOBILE': 'MOBI', 'NIDN': 'NIDN',
+                    'UEN': 'UEN', 'ACCT': 'ACCT', 'VPA': 'MOBI',
+                };
+                setSelectedProxyType(qrProxyToAddressType[result.merchantAccountInfo.proxyType] || result.merchantAccountInfo.proxyType);
             }
             if (result.merchantAccountInfo.proxyValue) {
-                const proxyKey = result.merchantAccountInfo.proxyType || "proxyValue";
-                const val = result.merchantAccountInfo.proxyValue;
-                setRecipientData(prev => ({ ...prev, [proxyKey]: val }));
+                // Always use 'accountOrProxyId' as the key — matches backend input field name
+                setRecipientData(prev => ({ ...prev, accountOrProxyId: result.merchantAccountInfo.proxyValue || '' }));
             }
 
             // Set amount if present
@@ -508,10 +517,10 @@ export function PaymentPage() {
 
         // Nexus spec compliance: Explicit Confirmation of Payee required
         if (!recipientConfirmed) {
-            notifications.show({ 
-                title: "Confirmation Required", 
-                message: "Please confirm the recipient name before sending", 
-                color: "yellow" 
+            notifications.show({
+                title: "Confirmation Required",
+                message: "Please confirm the recipient name before sending",
+                color: "yellow"
             });
             return;
         }
@@ -541,7 +550,7 @@ export function PaymentPage() {
                 sourceAmount: Number(amount),
                 sourceCurrency: feeBreakdown?.sourceCurrency || "SGD",
                 destinationAmount: Number(selectedQuote.destinationInterbankAmount),
-                destinationCurrency: selectedQuote.destinationCurrency,
+                destinationCurrency: selectedCountryData?.currencies[0]?.currencyCode || "THB",
                 exchangeRate: Number(selectedQuote.exchangeRate),
                 debtorName: "Demo Sender",
                 debtorAccount: "DEMO-SENDER-ACCT",
@@ -577,6 +586,7 @@ export function PaymentPage() {
             });
         } catch (err) {
             // Handle rejection (unhappy flows)
+            console.error('[Payment] Submit failed:', err);
             const error = err as Error & { statusReasonCode?: string; errors?: string[]; detail?: string };
             const statusCode = error.statusReasonCode || 'RJCT';
             const description = error.errors?.[0] || error.detail || 'Payment failed';
@@ -647,7 +657,7 @@ export function PaymentPage() {
             <Grid gutter="xl">
                 <Grid.Col span={{ base: 12, md: 4 }}>
                     <Stack gap="md">
-                        <Card withBorder radius="md" p="xl" bg="var(--mantine-color-dark-7)">
+                        <Card withBorder radius="md" p="xl" bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))">
                             <Stack gap="md">
                                 <Title order={5}>
                                     <Group gap="xs">
@@ -683,20 +693,20 @@ export function PaymentPage() {
                                     value={Number(amount)}
                                     onChange={(val) => setAmount(val)}
                                     min={1}
-                                    max={amountType === "SOURCE" 
-                                        ? Number(countries.find(c => c.countryCode === sourceCountry)?.currencies?.[0]?.maxAmount || 999999999) 
+                                    max={amountType === "SOURCE"
+                                        ? Number(countries.find(c => c.countryCode === sourceCountry)?.currencies?.[0]?.maxAmount || 999999999)
                                         : Number(selectedCountryData?.currencies?.[0]?.maxAmount || 999999999)}
                                     thousandSeparator=","
                                     description={amountType === "SOURCE"
                                         ? `System will calculate how much recipient receives. Maximum: ${countries.find(c => c.countryCode === sourceCountry)?.currencies?.[0]?.maxAmount?.toLocaleString() || "N/A"} ${countries.find(c => c.countryCode === sourceCountry)?.currencies?.[0]?.currencyCode || ""}`
                                         : `System will calculate how much to debit from your account. Maximum: ${selectedCountryData?.currencies?.[0]?.maxAmount?.toLocaleString() || "N/A"} ${selectedCountryData?.currencies?.[0]?.currencyCode || ""}`}
                                 />
-                                
+
                                 {/* NEXUS SPEC COMPLIANCE: Instruction Priority Selection */}
                                 <Stack gap="xs">
                                     <Group justify="space-between">
                                         <Text size="sm" fw={500}>Instruction Priority</Text>
-                                        <Tooltip 
+                                        <Tooltip
                                             label={
                                                 <Stack gap={4} p="xs">
                                                     <Text size="xs" fw={500}>HIGH: 25 second timeout</Text>
@@ -720,8 +730,8 @@ export function PaymentPage() {
                                         size="sm"
                                     />
                                     <Text size="xs" c="dimmed">
-                                        {instructionPriority === "HIGH" 
-                                            ? "Payment must complete within 25 seconds or be rejected" 
+                                        {instructionPriority === "HIGH"
+                                            ? "Payment must complete within 25 seconds or be rejected"
                                             : "Payment has up to 4 hours to complete"}
                                     </Text>
                                 </Stack>
@@ -776,49 +786,107 @@ export function PaymentPage() {
                                     onChange={setSelectedProxyType}
                                     disabled={!selectedCountry}
                                 />
-                                {proxyTypes.find(t => t.value === selectedProxyType)?.inputs?.map((input: import("../types").AddressTypeInputDetails) => (
-                                    <TextInput
-                                        key={input.attributes.name}
-                                        label={input.label.title['en'] || input.label.code}
-                                        placeholder={input.attributes?.placeholder || ""}
-                                        value={recipientData[input.attributes.name] || ""}
-                                        error={recipientErrors[input.attributes.name]}
-                                        onChange={(e) => {
-                                            const val = e.currentTarget.value;
-                                            setRecipientData(prev => ({ ...prev, [input.attributes.name]: val }));
+                                {proxyTypes.find(t => t.value === selectedProxyType)?.inputs?.map((input: import("../types").AddressTypeInputDetails) => {
+                                    const isProxyField = input.attributes.name === "accountOrProxyId";
+                                    const isHidden = input.attributes?.hidden;
 
-                                            // Validate against backend regex
-                                            const pattern = input.attributes?.pattern;
-                                            if (pattern && val) {
-                                                const regex = new RegExp(pattern);
-                                                if (!regex.test(val)) {
-                                                    setRecipientErrors(prev => ({
-                                                        ...prev,
-                                                        [input.attributes.name]: `Invalid format. Expected: ${input.attributes?.placeholder || "correct format"}`
-                                                    }));
+                                    if (isHidden) return null;
+
+                                    if (isProxyField) {
+                                        return (
+                                            <Autocomplete
+                                                key={input.attributes.name}
+                                                label={input.label?.title?.en || input.label?.code || (input as any).displayLabel || 'Value'}
+                                                placeholder={input.attributes?.placeholder || "Type to search contacts..."}
+                                                value={recipientData[input.attributes.name] || ""}
+                                                data={proxySuggestions}
+                                                error={recipientErrors[input.attributes.name]}
+                                                onOptionSubmit={(val) => {
+                                                    // Auto-resolve when user selects from autocomplete dropdown
+                                                    const cleanVal = val.includes(" — ") ? val.split(" — ")[0] : val;
+                                                    setRecipientData(prev => ({ ...prev, [input.attributes.name]: cleanVal }));
+                                                    // Trigger resolve after a short delay to let state update
+                                                    setTimeout(() => handleResolve(), 100);
+                                                }}
+                                                onKeyDown={(e) => {
+                                                    // Auto-resolve when user presses Enter
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        handleResolve();
+                                                    }
+                                                }}
+                                                onChange={(val) => {
+                                                    // Auto-clean: if value contains em dash from option selection, extract pure proxy value
+                                                    const cleanVal = val.includes(" — ") ? val.split(" — ")[0] : val;
+                                                    setRecipientData(prev => ({ ...prev, [input.attributes.name]: cleanVal }));
+                                                    // Search for matching proxies
+                                                    if (cleanVal.length >= 2 && selectedCountry && selectedProxyType) {
+                                                        searchProxies({ countryCode: selectedCountry, proxyType: selectedProxyType, q: cleanVal })
+                                                            .then(res => setProxySuggestions(
+                                                                res.results.map(r => `${r.proxyValue} — ${r.displayName}`)
+                                                            ))
+                                                            .catch(() => setProxySuggestions([]));
+                                                    } else {
+                                                        setProxySuggestions([]);
+                                                    }
+                                                    // Validate against backend regex
+                                                    const pattern = input.attributes?.pattern;
+                                                    if (pattern && cleanVal) {
+                                                        const regex = new RegExp(pattern);
+                                                        if (!regex.test(cleanVal)) {
+                                                            setRecipientErrors(prev => ({ ...prev, [input.attributes.name]: `Invalid format. Expected: ${input.attributes?.placeholder || "correct format"}` }));
+                                                        } else {
+                                                            setRecipientErrors(prev => ({ ...prev, [input.attributes.name]: null }));
+                                                        }
+                                                    } else {
+                                                        setRecipientErrors(prev => ({ ...prev, [input.attributes.name]: null }));
+                                                    }
+                                                }}
+                                                disabled={!selectedProxyType}
+                                                rightSection={
+                                                    input === proxyTypes.find(t => t.value === selectedProxyType)?.inputs?.[0] && (
+                                                        <Button
+                                                            size="compact-xs"
+                                                            variant="light"
+                                                            onClick={handleResolve}
+                                                            loading={loading.resolve}
+                                                            disabled={!Object.values(recipientData).some(v => v) || Object.values(recipientErrors).some(e => e)}
+                                                        >
+                                                            Resolve
+                                                        </Button>
+                                                    )
+                                                }
+                                                rightSectionWidth={80}
+                                            />
+                                        );
+                                    }
+
+                                    return (
+                                        <TextInput
+                                            key={input.attributes.name}
+                                            label={input.label?.title?.en || input.label?.code || (input as any).displayLabel || 'Value'}
+                                            placeholder={input.attributes?.placeholder || ""}
+                                            value={recipientData[input.attributes.name] || ""}
+                                            error={recipientErrors[input.attributes.name]}
+                                            onChange={(e) => {
+                                                const val = e.currentTarget.value;
+                                                setRecipientData(prev => ({ ...prev, [input.attributes.name]: val }));
+                                                const pattern = input.attributes?.pattern;
+                                                if (pattern && val) {
+                                                    const regex = new RegExp(pattern);
+                                                    if (!regex.test(val)) {
+                                                        setRecipientErrors(prev => ({ ...prev, [input.attributes.name]: `Invalid format. Expected: ${input.attributes?.placeholder || "correct format"}` }));
+                                                    } else {
+                                                        setRecipientErrors(prev => ({ ...prev, [input.attributes.name]: null }));
+                                                    }
                                                 } else {
                                                     setRecipientErrors(prev => ({ ...prev, [input.attributes.name]: null }));
                                                 }
-                                            } else {
-                                                setRecipientErrors(prev => ({ ...prev, [input.attributes.name]: null }));
-                                            }
-                                        }}
-                                        disabled={!selectedProxyType}
-                                        rightSection={
-                                            input === proxyTypes.find(t => t.value === selectedProxyType)?.inputs?.[0] && (
-                                                <Button
-                                                    size="compact-xs"
-                                                    variant="subtle"
-                                                    onClick={handleResolve}
-                                                    loading={loading.resolve}
-                                                    disabled={!Object.values(recipientData).some(v => v) || Object.values(recipientErrors).some(e => e)}
-                                                >
-                                                    <IconSearch size={14} />
-                                                </Button>
-                                            )
-                                        }
-                                    />
-                                ))}
+                                            }}
+                                            disabled={!selectedProxyType}
+                                        />
+                                    );
+                                })}
 
 
                                 {resolution && resolution.verified && (
@@ -830,23 +898,26 @@ export function PaymentPage() {
                                                 <Text size="xs">Bank/BIC: {resolution.agentBic || resolution.bankName}</Text>
                                             </Stack>
                                         </Alert>
-                                        
+
                                         {/* FATF R16: Sanctions Screening Data Collection (Step 10-11) */}
-                                        <Card withBorder p="sm" bg="var(--mantine-color-dark-7)">
+                                        <Card withBorder p="sm" bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))">
                                             <Group gap="xs" mb="xs">
                                                 <IconShieldCheck size={16} color="var(--mantine-color-blue-filled)" />
                                                 <Text size="sm" fw={500}>Sanctions Screening (FATF R16)</Text>
-                                                <Tooltip 
+                                                <Tooltip
                                                     label={
                                                         <Stack gap={4} p="xs">
-                                                            <Text size="xs">Per FATF Recommendation 16, we require:</Text>
-                                                            <Text size="xs">• Recipient Name (from verification)</Text>
-                                                            <Text size="xs">• Recipient Account Number</Text>
-                                                            <Text size="xs">• PLUS one of: Address, Date of Birth, or National ID</Text>
+                                                            <Text size="xs" fw={700}>PSP Responsibility</Text>
+                                                            <Text size="xs">In production, the Source PSP screens all payments against sanctions lists applicable in its jurisdiction.</Text>
+                                                            <Text size="xs" mt={4}>Per FATF Recommendation 16 (Wire Transfers), the PSP must collect:</Text>
+                                                            <Text size="xs">• Recipient Name (mandatory, from proxy resolution)</Text>
+                                                            <Text size="xs">• Account Number (mandatory)</Text>
+                                                            <Text size="xs">• PLUS at least one of: Address, Date of Birth, or National ID</Text>
+                                                            <Text size="xs" mt={4} c="dimmed">This data helps reduce false positives during sanctions screening.</Text>
                                                         </Stack>
                                                     }
                                                     multiline
-                                                    w={300}
+                                                    w={340}
                                                 >
                                                     <IconInfoCircle size={14} color="var(--mantine-color-dimmed)" />
                                                 </Tooltip>
@@ -895,9 +966,9 @@ export function PaymentPage() {
                                                 )}
                                             </Stack>
                                         </Card>
-                                        
+
                                         {/* NEXUS SPEC COMPLIANCE: Explicit Confirmation of Payee (Step 11) */}
-                                        <Card withBorder p="xs" bg="var(--mantine-color-dark-7)">
+                                        <Card withBorder p="xs" bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))">
                                             <Checkbox
                                                 label={
                                                     <Stack gap={0}>
@@ -935,7 +1006,7 @@ export function PaymentPage() {
                                     description="This message will appear on the recipient's statement"
                                     leftSection={<IconReceipt size={16} />}
                                 />
-                                
+
                                 <Button
                                     fullWidth
                                     leftSection={<IconSend size={16} />}
@@ -1015,9 +1086,9 @@ export function PaymentPage() {
                                                     })()}
                                                 </Stack>
                                             </Group>
-                                            
+
                                             <Divider />
-                                            
+
                                             <Group justify="space-between">
                                                 <Stack gap={0}>
                                                     <Text size="xs" c="dimmed">FX Provider</Text>
@@ -1028,7 +1099,7 @@ export function PaymentPage() {
                                                     <Text size="sm" fw={500}>1 {selectedQuote.sourceCurrency} = {Number(selectedQuote.exchangeRate).toLocaleString(undefined, { maximumFractionDigits: 4 })} {selectedCountryData?.currencies[0]?.currencyCode}</Text>
                                                 </Stack>
                                             </Group>
-                                            
+
                                             {quotes.length > 1 && (
                                                 <Text size="xs" c="dimmed" ta="center" mt="xs">
                                                     {quotes.length} quotes compared • Best rate auto-selected by PSP
@@ -1074,7 +1145,7 @@ export function PaymentPage() {
                                                 />
                                             </Group>
                                             <Text size="xs" c="dimmed" mt="xs">
-                                                {sourceFeeType === "INVOICED" 
+                                                {sourceFeeType === "INVOICED"
                                                     ? "Fee is added on top - you pay the fee separately"
                                                     : "Fee is deducted from transfer amount - recipient receives less"}
                                             </Text>
@@ -1107,7 +1178,7 @@ export function PaymentPage() {
 
             {/* Developer Debug Panel - Shows ISO message traces and transformations */}
             <Collapse in={devMode}>
-                <Card withBorder radius="md" p="lg" bg="var(--mantine-color-dark-8)" mt="lg">
+                <Card withBorder radius="md" p="lg" bg="light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-8))" mt="lg">
                     <Group justify="space-between" mb="md">
                         <Group gap="xs">
                             <IconCode size={24} color="var(--mantine-color-violet-filled)" />
@@ -1118,7 +1189,7 @@ export function PaymentPage() {
 
                     <Stack gap="md">
                         {/* Transaction Tracking IDs */}
-                        <Card withBorder radius="sm" p="md" bg="var(--mantine-color-dark-7)">
+                        <Card withBorder radius="sm" p="md" bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))">
                             <Group gap="xs" mb="sm">
                                 <IconTransform size={18} color="var(--mantine-color-blue-filled)" />
                                 <Text size="sm" fw={700}>Transaction Tracking</Text>
@@ -1209,7 +1280,7 @@ export function PaymentPage() {
                         </Card>
 
                         {/* Message Transformation View */}
-                        <Card withBorder radius="sm" p="md" bg="var(--mantine-color-dark-7)">
+                        <Card withBorder radius="sm" p="md" bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))">
                             <Group gap="xs" mb="sm">
                                 <IconTransform size={18} color="var(--mantine-color-green-filled)" />
                                 <Text size="sm" fw={700}>Nexus Gateway Transformations</Text>
@@ -1260,7 +1331,7 @@ export function PaymentPage() {
                         </Card>
 
                         {/* Actor Response Codes */}
-                        <Card withBorder radius="sm" p="md" bg="var(--mantine-color-dark-7)">
+                        <Card withBorder radius="sm" p="md" bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))">
                             <Group gap="xs" mb="sm">
                                 <IconInfoCircle size={18} color="var(--mantine-color-orange-filled)" />
                                 <Text size="sm" fw={700}>Actor Response Codes (pacs.002)</Text>

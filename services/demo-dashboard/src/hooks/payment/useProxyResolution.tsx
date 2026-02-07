@@ -30,7 +30,8 @@ export function useProxyResolution({
         proxyType: string,
         proxyValue: string,
         structuredData?: Record<string, string>,
-        scenarioCode?: string
+        scenarioCode?: string,
+        sourceCountry?: string
     ): Promise<ProxyResolutionResult | null> => {
         setLoading(true);
         setError(null);
@@ -38,6 +39,7 @@ export function useProxyResolution({
 
         try {
             const result = await resolveProxy({
+                sourceCountry: sourceCountry || 'SG',
                 destinationCountry: destCountry,
                 proxyType,
                 proxyValue,
@@ -52,53 +54,53 @@ export function useProxyResolution({
                     title: "Recipient Verified",
                     message: `Found: ${result.beneficiaryName || result.displayName}`,
                     color: "green",
-                    icon: <IconCheck size={ 16} />,
+                    icon: <IconCheck size={16} />,
                 });
-    onStepAdvance?.(9); // Sanctions Check step
-    return result;
-} else {
-    // Resolution failed
-    const errorMessage = result.statusReasonCode
-        ? `Resolution failed: ${result.statusReasonCode}`
-        : "Recipient not found";
-    setError(errorMessage);
-    setResolution(result);
-    notifications.show({
-        title: "Resolution Failed",
-        message: result.displayName || errorMessage,
-        color: "red",
-        icon: <IconAlertCircle size={ 16} />,
+                onStepAdvance?.(9); // Sanctions Check step
+                return result;
+            } else {
+                // Resolution failed
+                const errorMessage = result.statusReasonCode
+                    ? `Resolution failed: ${result.statusReasonCode}`
+                    : "Recipient not found";
+                setError(errorMessage);
+                setResolution(result);
+                notifications.show({
+                    title: "Resolution Failed",
+                    message: result.displayName || errorMessage,
+                    color: "red",
+                    icon: <IconAlertCircle size={16} />,
                 });
-onMarkStepError?.(8, errorMessage);
-return result;
+                onMarkStepError?.(8, errorMessage);
+                return result;
             }
         } catch (err) {
-    const errorMessage = "Could not resolve recipient address";
-    setError(errorMessage);
-    notifications.show({
-        title: "Resolution Error",
-        message: errorMessage,
-        color: "red",
-        icon: <IconAlertCircle size={ 16} />,
+            const errorMessage = "Could not resolve recipient address";
+            setError(errorMessage);
+            notifications.show({
+                title: "Resolution Error",
+                message: errorMessage,
+                color: "red",
+                icon: <IconAlertCircle size={16} />,
             });
-onMarkStepError?.(8, errorMessage);
-return null;
+            onMarkStepError?.(8, errorMessage);
+            return null;
         } finally {
-    setLoading(false);
-}
+            setLoading(false);
+        }
     }, [onStepAdvance, onMarkStepError]);
 
-// Clear resolution state
-const clearResolution = useCallback(() => {
-    setResolution(null);
-    setError(null);
-}, []);
+    // Clear resolution state
+    const clearResolution = useCallback(() => {
+        setResolution(null);
+        setError(null);
+    }, []);
 
-return {
-    resolution,
-    loading,
-    error,
-    resolve,
-    clearResolution,
-};
+    return {
+        resolution,
+        loading,
+        error,
+        resolve,
+        clearResolution,
+    };
 }

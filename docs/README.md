@@ -8,9 +8,11 @@ Comprehensive documentation for the Nexus Global Payments Sandbox.
 |----------|-------------|
 | [README](../README.md) | Project overview and setup |
 | [Usage Guide](./USAGE_GUIDE.md) | Basic usage instructions |
-| [Dashboard Guide](./DASHBOARD_GUIDE.md) | **NEW** - Navigation and UI reference |
+| [Dashboard Guide](./DASHBOARD_GUIDE.md) | Navigation and UI reference |
 | [Integration Guide](./INTEGRATION_GUIDE.md) | External system integration |
 | [E2E Demo Script](./E2E_DEMO_SCRIPT.md) | Live demonstration walkthrough |
+| [Unhappy Flows](./UNHAPPY_FLOWS.md) | Error scenario triggers and codes |
+| [Troubleshooting](./TROUBLESHOOTING.md) | Common issues and solutions |
 
 ---
 
@@ -48,6 +50,11 @@ Comprehensive documentation for the Nexus Global Payments Sandbox.
 | [ADR-009](./adr/ADR-009-sandbox-mock-data-strategy.md) | Sandbox Mock Data Strategy | Accepted |
 | [ADR-010](./adr/ADR-010-payment-lifecycle-persistence.md) | Payment Lifecycle Persistence | Accepted |
 | [ADR-011](./adr/ADR-011-developer-observability.md) | Developer Observability | Accepted |
+| [ADR-012](./adr/ADR-012-quote-snapshot-architecture.md) | Quote Snapshot Architecture | Accepted |
+| [ADR-013](./adr/ADR-013-e2e-demo-integration.md) | E2E Demo Integration | Accepted |
+| [ADR-014](./adr/ADR-014-protocol-parity-interactive-demo.md) | Protocol Parity Interactive Demo | Accepted |
+| [ADR-015](./adr/ADR-015-iso20022-full-parity.md) | ISO 20022 Full Parity | Accepted |
+| [ADR-016](./adr/ADR-016-api-parity-standards.md) | API Parity Standards | Accepted |
 
 ---
 
@@ -61,13 +68,14 @@ Design assumptions documented during implementation:
 | [02 FX & Liquidity](./assumptions/02_fx_and_liquidity.md) | A06–A10 |
 | [03 Messaging & Idempotency](./assumptions/03_messaging_and_idempotency.md) | A11–A14 |
 | [04 Compliance & Security](./assumptions/04_compliance_and_security.md) | A15–A18 |
-| [05 API Design](./assumptions/05_api_design.md) | A19–A21 |
-| [06 Testing](./assumptions/06_testing.md) | A22–A23 |
-| [07 Callback System](./assumptions/07_callback_system.md) | A24 |
-| [08 Mock Data](./assumptions/08_mock_data.md) | A25 |
-| [09 Event Sourcing Implementation](./assumptions/09_event_sourcing_implementation.md) | A26 |
-| [10 Lifecycle Persistence](./assumptions/10_lifecycle_persistence.md) | A27 |
+| [05 Settlement & Exceptions](./assumptions/05_settlement_and_exceptions.md) | A19–A21 |
+| [06 Economics & Fees](./assumptions/06_economics_and_fees.md) | A22–A23 |
+| [07 Status & Reason Codes](./assumptions/07_status_and_reason_codes.md) | A24 |
+| [08 Complex Edge Cases](./assumptions/08_complex_edge_cases.md) | A25 |
+| [09 Actor Integration](./assumptions/09_actor_integration.md) | A26 |
+| [10 Ralph Validation](./assumptions/10_ralph_validation.md) | A27 |
 | [11 Developer Observability](./assumptions/11_developer_observability.md) | A28–A30 |
+| [11b pacs.008 Returns](./assumptions/11_pacs008_returns.md) | A31 |
 
 ---
 

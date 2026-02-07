@@ -318,3 +318,56 @@ async def store_addressing_event(
     })
     await db.commit()
 
+
+# =============================================================================
+# Proxy Search (Autocomplete for frontend)
+# =============================================================================
+
+@router.get(
+    "/addressing/search",
+    summary="Search Registered Proxies (Autocomplete)",
+    description="""
+    Search proxy registrations for autocomplete suggestions.
+    Simulates a contact list lookup that a real PSP app would provide.
+    Returns masked names for privacy.
+    """,
+    tags=["Addressing"],
+)
+async def search_proxies(
+    country_code: str = "",
+    proxy_type: str = "",
+    q: str = "",
+    db: AsyncSession = Depends(get_db),
+):
+    """Search proxy registrations for autocomplete suggestions."""
+    query = text("""
+        SELECT proxy_type, proxy_value, creditor_name_masked, bank_name
+        FROM proxy_registrations
+        WHERE status = 'ACTIVE'
+        AND (:country_code = '' OR country_code = :country_code)
+        AND (:proxy_type = '' OR proxy_type = :proxy_type)
+        AND (:q = '' OR proxy_value ILIKE '%' || :q || '%'
+             OR creditor_name_masked ILIKE '%' || :q || '%')
+        ORDER BY proxy_value
+        LIMIT 20
+    """)
+
+    result = await db.execute(query, {
+        "country_code": country_code.upper() if country_code else "",
+        "proxy_type": proxy_type.upper() if proxy_type else "",
+        "q": q,
+    })
+    rows = result.fetchall()
+
+    return {
+        "results": [
+            {
+                "proxyType": row.proxy_type,
+                "proxyValue": row.proxy_value,
+                "displayName": row.creditor_name_masked,
+                "bankName": row.bank_name,
+            }
+            for row in rows
+        ],
+        "total": len(rows),
+    }

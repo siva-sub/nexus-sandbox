@@ -16,6 +16,8 @@ This document provides step-by-step instructions for demonstrating the complete 
 
 3. **Verify API status**: Green "API: connected" badge in header
 
+> **Quick Alternative**: Don't want to follow all steps? Click **Quick Demo** on the Interactive Demo page (`/demo`) to see a full payment execute in ~10 seconds.
+
 ---
 
 ## Happy Flow Demo
@@ -171,8 +173,8 @@ GET /v1/quotes/{quoteId}/intermediary-agents
 │    Transformed pacs.008 with Thai currency/agents           │
 ├─────────────────────────────────────────────────────────────┤
 │ 4. IPS-TH → NEXUS → IPS-SG → PSP                           │
-│    pacs.002 with Status=ACCC (Accepted Settlement Completed)│
-│    + HMAC-SHA256 signature for callback authentication      │
+│    pacs.002 with Status=ACSC (Accepted Settlement Completed) │
+│    + HMAC-SHA256 signature for callback authentication       │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -280,11 +282,13 @@ GET /v1/quotes/{quoteId}/intermediary-agents
 
 | Code | Meaning | When |
 |------|---------|------|
-| `ACCC` | Accepted Settlement Completed | Payment successful |
+| `ACSC` | Accepted Settlement Completed | Payment successful |
+| `ACCC` | Accepted Credit Settlement Completed | Legacy/alternative success code |
 | `AB04` | Aborted - Settlement Fatal Error | Quote expired / rate mismatch |
 | `BE23` | Account/Proxy Invalid | Proxy not found |
 | `RC11` | Invalid Intermediary Agent | Bad SAP BIC |
 | `AM04` | Insufficient Funds | Settlement failure |
+| `TM01` | Timeout | Processing exceeded SLA |
 
 ---
 

@@ -140,7 +140,7 @@ class LiquidityAlert(BaseModel):
 @router.post("/nostro-accounts", response_model=NostroAccountResponse)
 async def create_nostro_account(
     request: NostroAccountCreate,
-    sap_bic: str = Query(..., alias="sapBic", description="BIC of the SAP"),
+    sap_bic: str = Query("DBSSSGSG", alias="sapBic", description="BIC of the SAP"),
     db: AsyncSession = Depends(get_db),
 ) -> NostroAccountResponse:
     """
@@ -211,7 +211,7 @@ async def create_nostro_account(
         sap_bic=sap.bic,
         fxp_id=fxp.fxp_id,
         fxp_name=fxp.name,
-        fxp_bic=fxp.bic,
+        fxp_bic=fxp.fxp_code,
         currency=request.currency.upper(),
         balance=str(request.initial_balance),
         account_number=account_number,
@@ -222,7 +222,7 @@ async def create_nostro_account(
 
 @router.get("/nostro-accounts", response_model=List[NostroAccountResponse])
 async def list_nostro_accounts(
-    sap_bic: str = Query(..., alias="sapBic", description="BIC of the SAP"),
+    sap_bic: str = Query("DBSSSGSG", alias="sapBic", description="BIC of the SAP"),
     fxp_bic: Optional[str] = Query(None, alias="fxpBic", description="Filter by FXP BIC"),
     currency: Optional[str] = Query(None, description="Filter by currency"),
     db: AsyncSession = Depends(get_db),
@@ -243,7 +243,7 @@ async def list_nostro_accounts(
     params = {"sap_id": sap.sap_id}
     
     if fxp_bic:
-        filters.append("f.bic = :fxp_bic")
+        filters.append("f.fxp_code = :fxp_bic")
         params["fxp_bic"] = fxp_bic.upper()
     
     if currency:
@@ -255,8 +255,8 @@ async def list_nostro_accounts(
     accounts_query = text(f"""
         SELECT 
             a.account_id, a.sap_id, s.name as sap_name, s.bic as sap_bic,
-            a.fxp_id, f.name as fxp_name, f.bic as fxp_bic,
-            a.currency_code, a.balance, a.account_number, a.status, a.created_at
+            a.fxp_id, f.name as fxp_name, f.fxp_code as fxp_bic,
+            a.currency_code, a.balance, a.account_number, a.created_at
         FROM fxp_sap_accounts a
         JOIN saps s ON a.sap_id = s.sap_id
         JOIN fxps f ON a.fxp_id = f.fxp_id
@@ -269,17 +269,17 @@ async def list_nostro_accounts(
     
     return [
         NostroAccountResponse(
-            account_id=a.account_id,
-            sap_id=a.sap_id,
+            account_id=str(a.account_id),
+            sap_id=str(a.sap_id),
             sap_name=a.sap_name,
             sap_bic=a.sap_bic,
-            fxp_id=a.fxp_id,
+            fxp_id=str(a.fxp_id),
             fxp_name=a.fxp_name,
             fxp_bic=a.fxp_bic,
             currency=a.currency_code,
             balance=str(a.balance),
             account_number=a.account_number,
-            status=a.status,
+            status="ACTIVE",
             created_at=a.created_at.isoformat() if isinstance(a.created_at, datetime) else str(a.created_at)
         )
         for a in accounts
@@ -289,7 +289,7 @@ async def list_nostro_accounts(
 @router.get("/nostro-accounts/{account_id}", response_model=NostroAccountResponse)
 async def get_nostro_account(
     account_id: str = Path(..., description="ID of the account"),
-    sap_bic: str = Query(..., alias="sapBic", description="BIC of the SAP"),
+    sap_bic: str = Query("DBSSSGSG", alias="sapBic", description="BIC of the SAP"),
     db: AsyncSession = Depends(get_db),
 ) -> NostroAccountResponse:
     """
@@ -306,8 +306,8 @@ async def get_nostro_account(
     account_query = text("""
         SELECT 
             a.account_id, a.sap_id, s.name as sap_name, s.bic as sap_bic,
-            a.fxp_id, f.name as fxp_name, f.bic as fxp_bic,
-            a.currency_code, a.balance, a.account_number, a.status, a.created_at
+            a.fxp_id, f.name as fxp_name, f.fxp_code as fxp_bic,
+            a.currency_code, a.balance, a.account_number, a.created_at
         FROM fxp_sap_accounts a
         JOIN saps s ON a.sap_id = s.sap_id
         JOIN fxps f ON a.fxp_id = f.fxp_id
@@ -321,17 +321,17 @@ async def get_nostro_account(
         raise HTTPException(status_code=404, detail="Account not found")
     
     return NostroAccountResponse(
-        account_id=a.account_id,
-        sap_id=a.sap_id,
+        account_id=str(a.account_id),
+        sap_id=str(a.sap_id),
         sap_name=a.sap_name,
         sap_bic=a.sap_bic,
-        fxp_id=a.fxp_id,
+        fxp_id=str(a.fxp_id),
         fxp_name=a.fxp_name,
         fxp_bic=a.fxp_bic,
         currency=a.currency_code,
         balance=str(a.balance),
         account_number=a.account_number,
-        status=a.status,
+        status="ACTIVE",
         created_at=a.created_at.isoformat() if isinstance(a.created_at, datetime) else str(a.created_at)
     )
 
@@ -343,7 +343,7 @@ async def get_nostro_account(
 @router.post("/reservations", response_model=ReservationResponse)
 async def create_reservation(
     request: ReservationCreate,
-    sap_bic: str = Query(..., alias="sapBic", description="BIC of the SAP"),
+    sap_bic: str = Query("DBSSSGSG", alias="sapBic", description="BIC of the SAP"),
     db: AsyncSession = Depends(get_db),
 ) -> ReservationResponse:
     """
@@ -430,7 +430,7 @@ async def create_reservation(
         reservation_id=reservation_id,
         account_id=account.account_id,
         sap_bic=sap_bic.upper(),
-        fxp_bic=fxp.bic,
+        fxp_bic=fxp.fxp_code,
         currency=request.currency.upper(),
         amount=str(request.amount),
         uetr=request.uetr,
@@ -442,7 +442,7 @@ async def create_reservation(
 
 @router.get("/reservations", response_model=List[ReservationResponse])
 async def list_reservations(
-    sap_bic: str = Query(..., alias="sapBic", description="BIC of the SAP"),
+    sap_bic: str = Query("DBSSSGSG", alias="sapBic", description="BIC of the SAP"),
     status: Optional[str] = Query(None, description="Filter by status: ACTIVE, UTILIZED, EXPIRED, CANCELLED"),
     fxp_bic: Optional[str] = Query(None, alias="fxpBic", description="Filter by FXP"),
     db: AsyncSession = Depends(get_db),
@@ -467,14 +467,14 @@ async def list_reservations(
         params["status"] = status.upper()
     
     if fxp_bic:
-        filters.append("f.bic = :fxp_bic")
+        filters.append("f.fxp_code = :fxp_bic")
         params["fxp_bic"] = fxp_bic.upper()
     
     where_clause = " AND ".join(filters)
     
     reservations_query = text(f"""
         SELECT 
-            r.reservation_id, r.account_id, s.bic as sap_bic, f.bic as fxp_bic,
+            r.reservation_id, r.account_id, s.bic as sap_bic, f.fxp_code as fxp_bic,
             a.currency_code, r.amount, r.uetr, r.status, r.reserved_at, r.expires_at
         FROM sap_reservations r
         JOIN fxp_sap_accounts a ON r.account_id = a.account_id
@@ -507,7 +507,7 @@ async def list_reservations(
 @router.post("/reservations/{reservation_id}/cancel")
 async def cancel_reservation(
     reservation_id: str = Path(..., description="ID of the reservation"),
-    sap_bic: str = Query(..., alias="sapBic", description="BIC of the SAP"),
+    sap_bic: str = Query("DBSSSGSG", alias="sapBic", description="BIC of the SAP"),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
@@ -554,7 +554,7 @@ async def cancel_reservation(
 
 @router.get("/transactions", response_model=List[SettlementTransaction])
 async def list_transactions(
-    sap_bic: str = Query(..., alias="sapBic", description="BIC of the SAP"),
+    sap_bic: str = Query("DBSSSGSG", alias="sapBic", description="BIC of the SAP"),
     fxp_bic: Optional[str] = Query(None, alias="fxpBic", description="Filter by FXP"),
     currency: Optional[str] = Query(None, description="Filter by currency"),
     limit: int = Query(50, ge=1, le=100),
@@ -576,7 +576,7 @@ async def list_transactions(
     params = {"sap_id": sap.sap_id, "limit": limit}
     
     if fxp_bic:
-        filters.append("f.bic = :fxp_bic")
+        filters.append("f.fxp_code = :fxp_bic")
         params["fxp_bic"] = fxp_bic.upper()
     
     if currency:
@@ -587,7 +587,7 @@ async def list_transactions(
     
     transactions_query = text(f"""
         SELECT 
-            t.transaction_id, t.account_id, s.bic as sap_bic, f.bic as fxp_bic,
+            t.transaction_id, t.account_id, s.bic as sap_bic, f.fxp_code as fxp_bic,
             a.currency_code, t.amount, t.type, t.reference, t.uetr, t.status, t.created_at
         FROM sap_transactions t
         JOIN fxp_sap_accounts a ON t.account_id = a.account_id
@@ -625,7 +625,7 @@ async def list_transactions(
 
 @router.get("/reconciliation", response_model=List[ReconciliationReport])
 async def get_reconciliation_reports(
-    sap_bic: str = Query(..., alias="sapBic", description="BIC of the SAP"),
+    sap_bic: str = Query("DBSSSGSG", alias="sapBic", description="BIC of the SAP"),
     date: Optional[str] = Query(None, description="Date in YYYY-MM-DD format (default: today)"),
     db: AsyncSession = Depends(get_db),
 ) -> List[ReconciliationReport]:
@@ -643,6 +643,9 @@ async def get_reconciliation_reports(
         raise HTTPException(status_code=404, detail=f"SAP with BIC {sap_bic} not found")
     
     report_date = date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    # Parse to date object for asyncpg
+    from datetime import date as date_type
+    report_date_obj = datetime.strptime(report_date, "%Y-%m-%d").date()
     
     # Get reconciliation data per currency
     reconciliation_query = text("""
@@ -654,14 +657,14 @@ async def get_reconciliation_reports(
             COUNT(t.transaction_id) as transaction_count
         FROM fxp_sap_accounts a
         LEFT JOIN sap_transactions t ON a.account_id = t.account_id
-        WHERE a.sap_id = :sap_id
+        WHERE a.sap_id = CAST(:sap_id AS uuid)
         GROUP BY a.account_id, a.currency_code, a.balance
         ORDER BY a.currency_code
     """)
     
     result = await db.execute(reconciliation_query, {
-        "sap_id": sap.sap_id,
-        "report_date": report_date
+        "sap_id": str(sap.sap_id),
+        "report_date": report_date_obj
     })
     rows = result.fetchall()
     
@@ -674,7 +677,7 @@ async def get_reconciliation_reports(
         
         reports.append(ReconciliationReport(
             date=report_date,
-            sap_id=sap.sap_id,
+            sap_id=str(sap.sap_id),
             sap_name=sap.name,
             currency=r.currency_code,
             opening_balance=str(opening),
@@ -694,7 +697,7 @@ async def get_reconciliation_reports(
 @router.post("/liquidity-alerts")
 async def configure_liquidity_alerts(
     request: LiquidityAlert,
-    sap_bic: str = Query(..., alias="sapBic", description="BIC of the SAP"),
+    sap_bic: str = Query("DBSSSGSG", alias="sapBic", description="BIC of the SAP"),
     fxp_bic: str = Query(..., alias="fxpBic", description="BIC of the FXP"),
     currency: str = Query(..., description="Currency code"),
     db: AsyncSession = Depends(get_db),

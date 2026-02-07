@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
+from uuid import uuid5, NAMESPACE_DNS
 from ..db import get_db
 
 router = APIRouter(prefix="/v1/liquidity", tags=["Liquidity Management"])
@@ -51,48 +52,37 @@ from .schemas import (
     """
 )
 async def get_fxp_balances(
-    fxp_id: str = Query(..., alias="fxpId", description="FX Provider ID"),
+    fxp_id: str = Query("FXP-GLOBAL", alias="fxpId", description="FX Provider ID (defaults to FXP-GLOBAL in sandbox)"),
     currency: Optional[str] = Query(None, description="Filter by currency"),
     db: AsyncSession = Depends(get_db)
 ) -> list[FxpBalance]:
     """Get FXP balances at all connected SAPs."""
-    now = datetime.now(timezone.utc)
+    # Generate deterministic UUID from fxp_id string for the model's UUID field
+    fxp_uuid = uuid5(NAMESPACE_DNS, fxp_id)
     
     # For sandbox: return example balances
     # Production would query sap_balances table
     balances = [
         FxpBalance(
-            fxpId=fxp_id,
-            sapId="SAP_SG_FAST",
-            accountId="FXP-SGD-001",
+            fxp_id=fxp_uuid,
             currency="SGD",
-            availableBalance="5000000.00",
-            reservedBalance="250000.00",
-            totalBalance="5250000.00",
-            creditLimit="10000000.00",
-            lastUpdated=now.isoformat()
+            balance=5250000.00,
+            reserved=250000.00,
+            available=5000000.00,
         ),
         FxpBalance(
-            fxpId=fxp_id,
-            sapId="SAP_TH_PROMPTPAY",
-            accountId="FXP-THB-001",
+            fxp_id=fxp_uuid,
             currency="THB",
-            availableBalance="129250000.00",
-            reservedBalance="6500000.00",
-            totalBalance="135750000.00",
-            creditLimit="250000000.00",
-            lastUpdated=now.isoformat()
+            balance=135750000.00,
+            reserved=6500000.00,
+            available=129250000.00,
         ),
         FxpBalance(
-            fxpId=fxp_id,
-            sapId="SAP_MY_DUITNOW",
-            accountId="FXP-MYR-001",
+            fxp_id=fxp_uuid,
             currency="MYR",
-            availableBalance="17500000.00",
-            reservedBalance="875000.00",
-            totalBalance="18375000.00",
-            creditLimit="35000000.00",
-            lastUpdated=now.isoformat()
+            balance=18375000.00,
+            reserved=875000.00,
+            available=17500000.00,
         ),
     ]
     
@@ -124,7 +114,7 @@ async def get_fxp_balances(
     """
 )
 async def reserve_liquidity(
-    fxp_id: str = Query(..., alias="fxpId"),
+    fxp_id: str = Query("FXP-GLOBAL", alias="fxpId"),
     sap_id: str = Query(..., alias="sapId"),
     uetr: str = Query(..., description="Payment UETR"),
     amount: str = Query(..., description="Amount to reserve"),
@@ -194,6 +184,48 @@ async def release_reservation(
 
 
 # =============================================================================
+# GET /liquidity/reservations - List Active Reservations
+# =============================================================================
+
+@router.get(
+    "/reservations",
+    summary="List active liquidity reservations",
+    description="Returns currently active liquidity reservations (sandbox demo data)."
+)
+async def list_reservations(
+    fxp_id: str = Query("FXP-GLOBAL", alias="fxpId", description="FX Provider ID"),
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """List active liquidity reservations."""
+    now = datetime.now(timezone.utc)
+    reservations = [
+        {
+            "reservationId": "RES-f47ac10b",
+            "fxpId": fxp_id,
+            "sapId": "SAP_SG_FAST",
+            "uetr": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+            "amount": "1000.00",
+            "currency": "SGD",
+            "status": "RESERVED",
+            "createdAt": (now - timedelta(minutes=5)).isoformat(),
+            "expiresAt": (now + timedelta(minutes=5)).isoformat()
+        },
+        {
+            "reservationId": "RES-a47bc20c",
+            "fxpId": fxp_id,
+            "sapId": "SAP_TH_PROMPTPAY",
+            "uetr": "a47bc20c-58cc-4372-b567-1f02b2c3d480",
+            "amount": "25850.00",
+            "currency": "THB",
+            "status": "RESERVED",
+            "createdAt": (now - timedelta(minutes=3)).isoformat(),
+            "expiresAt": (now + timedelta(minutes=7)).isoformat()
+        }
+    ]
+    return {"reservations": reservations, "total": len(reservations)}
+
+
+# =============================================================================
 # GET /liquidity/notifications - FXP Payment Notifications
 # =============================================================================
 
@@ -212,7 +244,7 @@ async def release_reservation(
     """
 )
 async def get_fxp_notifications(
-    fxp_id: str = Query(..., alias="fxpId"),
+    fxp_id: str = Query("FXP-GLOBAL", alias="fxpId"),
     since: Optional[str] = Query(None, description="Since timestamp (ISO 8601)"),
     status: Optional[str] = Query(None, description="Filter by status"),
     limit: int = Query(50, ge=1, le=200),
@@ -357,7 +389,7 @@ async def calculate_settlement(
     """
 )
 async def get_settlement_positions(
-    fxp_id: str = Query(..., alias="fxpId", description="FX Provider ID"),
+    fxp_id: str = Query("FXP-GLOBAL", alias="fxpId", description="FX Provider ID (defaults to FXP-GLOBAL in sandbox)"),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
     """Get FXP settlement positions."""
@@ -371,8 +403,8 @@ async def get_settlement_positions(
                     source_currency,
                     destination_currency,
                     COUNT(*) as trade_count,
-                    COALESCE(SUM(CAST(source_amount AS NUMERIC)), 0) as total_source,
-                    COALESCE(SUM(CAST(destination_amount AS NUMERIC)), 0) as total_dest
+                    COALESCE(SUM(CAST(interbank_settlement_amount AS NUMERIC)), 0) as total_source,
+                    COALESCE(SUM(CAST(creditor_amount AS NUMERIC)), 0) as total_dest
                 FROM payments 
                 WHERE status = 'ACCC'
                 AND created_at >= :since

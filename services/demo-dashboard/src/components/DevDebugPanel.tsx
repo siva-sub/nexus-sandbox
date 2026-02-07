@@ -215,7 +215,7 @@ export function DevDebugPanel({ context, showToggle = true, defaultOpen = false 
         <Stack gap="md">
             {header}
             <Collapse in={devMode || !showToggle}>
-                <Card withBorder radius="md" p="lg" bg="var(--mantine-color-dark-8)">
+                <Card withBorder radius="md" p="lg" bg="light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-8))">
                     <Group justify="space-between" mb="md">
                         <Group gap="xs">
                             <IconCode size={24} color="var(--mantine-color-violet-filled)" />
@@ -226,7 +226,7 @@ export function DevDebugPanel({ context, showToggle = true, defaultOpen = false 
 
                     <Stack gap="md">
                         {/* API Test Commands - NEW ACTIONABLE SECTION */}
-                        <Card withBorder radius="sm" p="md" bg="var(--mantine-color-dark-7)">
+                        <Card withBorder radius="sm" p="md" bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))">
                             <Group gap="xs" mb="sm">
                                 <IconTerminal2 size={18} color="var(--mantine-color-cyan-filled)" />
                                 <Text size="sm" fw={700}>API Test Commands ({actorType})</Text>
@@ -238,7 +238,7 @@ export function DevDebugPanel({ context, showToggle = true, defaultOpen = false 
                             </Alert>
                             <Stack gap="xs">
                                 {apiCommands.map((cmd, i) => (
-                                    <Card key={i} withBorder radius="xs" p="xs" bg="var(--mantine-color-dark-6)">
+                                    <Card key={i} withBorder radius="xs" p="xs" bg="light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-6))">
                                         <Group justify="space-between" mb={4}>
                                             <Group gap="xs">
                                                 <Badge color={cmd.method === "GET" ? "blue" : "green"} size="xs">{cmd.method}</Badge>
@@ -264,7 +264,7 @@ export function DevDebugPanel({ context, showToggle = true, defaultOpen = false 
                         </Card>
 
                         {/* ISO Messages for this Actor */}
-                        <Card withBorder radius="sm" p="md" bg="var(--mantine-color-dark-7)">
+                        <Card withBorder radius="sm" p="md" bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))">
                             <Group gap="xs" mb="sm">
                                 <IconMessageCircle size={18} color="var(--mantine-color-blue-filled)" />
                                 <Text size="sm" fw={700}>ISO 20022 Messages ({actorType})</Text>
@@ -298,7 +298,7 @@ export function DevDebugPanel({ context, showToggle = true, defaultOpen = false 
                         </Card>
 
                         {/* Key Fields for this Actor */}
-                        <Card withBorder radius="sm" p="md" bg="var(--mantine-color-dark-7)">
+                        <Card withBorder radius="sm" p="md" bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))">
                             <Group gap="xs" mb="sm">
                                 <IconTransform size={18} color="var(--mantine-color-green-filled)" />
                                 <Text size="sm" fw={700}>Key ISO Fields ({actorType})</Text>
@@ -324,7 +324,7 @@ export function DevDebugPanel({ context, showToggle = true, defaultOpen = false 
                         </Card>
 
                         {/* Gateway Transformations (show for all actors to understand flow) */}
-                        <Card withBorder radius="sm" p="md" bg="var(--mantine-color-dark-7)">
+                        <Card withBorder radius="sm" p="md" bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))">
                             <Group gap="xs" mb="sm">
                                 <IconTransform size={18} color="var(--mantine-color-orange-filled)" />
                                 <Text size="sm" fw={700}>Nexus Gateway Transformations</Text>
@@ -355,7 +355,7 @@ export function DevDebugPanel({ context, showToggle = true, defaultOpen = false 
                         </Card>
 
                         {/* Actor Response Codes */}
-                        <Card withBorder radius="sm" p="md" bg="var(--mantine-color-dark-7)">
+                        <Card withBorder radius="sm" p="md" bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))">
                             <Group gap="xs" mb="sm">
                                 <IconInfoCircle size={18} color="var(--mantine-color-red-filled)" />
                                 <Text size="sm" fw={700}>pacs.002 Response Codes</Text>

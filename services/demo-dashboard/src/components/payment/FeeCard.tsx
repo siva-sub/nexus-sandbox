@@ -45,7 +45,7 @@ export function FeeCard({ fee, quote, now }: FeeCardProps) {
     const isWithinG20 = totalCostPct <= 3.0;
 
     return (
-        <Card withBorder radius="md" p="xl" bg="var(--mantine-color-dark-8)">
+        <Card withBorder radius="md" p="xl" bg="light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-8))">
             <Group justify="space-between" mb="lg">
                 <Group gap="xs">
                     <IconReceipt size={24} color="var(--mantine-color-blue-filled)" />
@@ -108,7 +108,7 @@ export function FeeCard({ fee, quote, now }: FeeCardProps) {
                             <Table.Td c="dimmed" pl="lg">+ Nexus Scheme Fee</Table.Td>
                             <Table.Td ta="right" c="dimmed">{fee.sourceCurrency} {safeNumber(fee.schemeFee).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Table.Td>
                         </Table.Tr>
-                        <Table.Tr style={{ borderTop: "1px solid var(--mantine-color-dark-4)" }}>
+                        <Table.Tr style={{ borderTop: "1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))" }}>
                             <Table.Td fw={600}>= Total Debited</Table.Td>
                             <Table.Td ta="right" fw={600}>{fee.sourceCurrency} {safeNumber(fee.senderTotal).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Table.Td>
                         </Table.Tr>
@@ -126,7 +126,7 @@ export function FeeCard({ fee, quote, now }: FeeCardProps) {
                             <Table.Td c="dimmed" pl="lg">− Destination PSP Fee (Deducted)</Table.Td>
                             <Table.Td ta="right" c="dimmed">{fee.destinationCurrency} {safeNumber(fee.destinationPspFee).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Table.Td>
                         </Table.Tr>
-                        <Table.Tr style={{ borderTop: "1px solid var(--mantine-color-dark-4)" }}>
+                        <Table.Tr style={{ borderTop: "1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4))" }}>
                             <Table.Td fw={600}>= Recipient Receives (Net)</Table.Td>
                             <Table.Td ta="right" fw={600}>{fee.destinationCurrency} {safeNumber(fee.recipientNetAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Table.Td>
                         </Table.Tr>
@@ -134,7 +134,7 @@ export function FeeCard({ fee, quote, now }: FeeCardProps) {
                 </Table>
 
                 {/* Exchange Rates with explicit units */}
-                <Stack gap="xs" p="md" bg="var(--mantine-color-dark-7)" style={{ borderRadius: "8px" }}>
+                <Stack gap="xs" p="md" bg="light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7))" style={{ borderRadius: "8px" }}>
                     <Group justify="space-between">
                         <Stack gap={0}>
                             <Text size="sm" fw={700}>Market FX Rate (Mid)</Text>

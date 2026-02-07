@@ -37,13 +37,13 @@ import {
     useMantineTheme,
     Stepper,
     NumberInput,
-    TextInput,
+    Autocomplete,
     Radio,
     Progress,
     Timeline,
     Divider,
-    Table,
     ScrollArea,
+    Accordion,
 } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
@@ -52,8 +52,6 @@ import {
     IconCheck,
     IconX,
     IconArrowsExchange,
-    IconBuildingBank,
-    IconServer,
     IconInfoCircle,
     IconRefresh,
     IconSend,
@@ -69,11 +67,13 @@ import {
     getQuotes,
     getPreTransactionDisclosure,
     resolveProxy,
+    searchProxies,
     submitPacs008,
     confirmSenderApproval,
     getIntermediaryAgents
 } from "../services/api";
 import { ActorRegistrationModal } from "../components/ActorRegistrationModal";
+import { FeeCard } from "../components/payment";
 import type { Quote, FeeBreakdown, Country } from "../types";
 
 // ============================================================================
@@ -108,11 +108,12 @@ export function InteractiveDemo() {
     const [destCountry, setDestCountry] = useState<string>("ID");
     const [amountType, setAmountType] = useState<"SOURCE" | "DESTINATION">("DESTINATION");
     const [amount, setAmount] = useState<number>(100000);
-    const [proxyType, setProxyType] = useState<string>("PHONE");
-    const [proxyValue, setProxyValue] = useState<string>("+919123456789");
+    const [proxyType, setProxyType] = useState<string>("MBNO");
+    const [proxyValue, setProxyValue] = useState<string>("+6281234567890");
     const [scenario, setScenario] = useState<string>("happy");
     const [sourceFeeType, setSourceFeeType] = useState<"INVOICED" | "DEDUCTED">("INVOICED");
     const [actorModalOpen, setActorModalOpen] = useState(false);
+    const [proxySuggestions, setProxySuggestions] = useState<string[]>([]);
 
     // Demo scenarios - validated via NotebookLM (Feb 4, 2026)
     const SCENARIOS = [
@@ -145,8 +146,9 @@ export function InteractiveDemo() {
             setActive(0);
             await new Promise(r => setTimeout(r, 300));
             const res = await resolveProxy({
+                sourceCountry: "SG",
                 destinationCountry: "ID",
-                proxyType: "PHONE",
+                proxyType: "MBNO",
                 proxyValue: "+6281234567890"
             });
             setResolution({ recipientName: res.beneficiaryName || res.displayName || "Budi Santoso", recipientPsp: res.bankName || "Bank Mandiri" });
@@ -276,6 +278,7 @@ export function InteractiveDemo() {
         try {
             // Resolve proxy first
             const res = await resolveProxy({
+                sourceCountry,
                 destinationCountry: destCountry,
                 proxyType,
                 proxyValue
@@ -614,20 +617,64 @@ export function InteractiveDemo() {
                             <SimpleGrid cols={isMobile ? 1 : 2} spacing="md">
                                 <Select
                                     label="Proxy Type"
-                                    data={[
-                                        { value: "PHONE", label: "📱 Mobile Number" },
-                                        { value: "EMAIL", label: "📧 Email Address" },
-                                        { value: "RANDOM_KEY", label: "🔑 Random Key" },
-                                    ]}
+                                    data={{
+                                        SG: [
+                                            { value: "MOBI", label: "📱 Mobile Number (PayNow)" },
+                                            { value: "NRIC", label: "🆔 NRIC/FIN" },
+                                            { value: "UEN", label: "🏢 Business UEN" },
+                                            { value: "ACCT", label: "🏦 Bank Account" },
+                                        ],
+                                        TH: [
+                                            { value: "MOBI", label: "📱 Mobile (PromptPay)" },
+                                            { value: "NIDN", label: "🆔 National ID" },
+                                            { value: "EWAL", label: "💳 e-Wallet ID" },
+                                            { value: "ACCT", label: "🏦 Bank Account" },
+                                        ],
+                                        MY: [
+                                            { value: "MOBI", label: "📱 Mobile (DuitNow)" },
+                                            { value: "NRIC", label: "🆔 MyKad Number" },
+                                            { value: "BIZN", label: "🏢 Business Reg" },
+                                            { value: "ACCT", label: "🏦 Bank Account" },
+                                        ],
+                                        ID: [
+                                            { value: "MBNO", label: "📱 Mobile (BI-FAST)" },
+                                            { value: "EMAL", label: "📧 Email Address" },
+                                            { value: "NIK", label: "🆔 National ID (NIK)" },
+                                            { value: "ACCT", label: "🏦 Bank Account" },
+                                        ],
+                                        IN: [
+                                            { value: "MBNO", label: "📱 Mobile (UPI)" },
+                                            { value: "VPA", label: "💳 UPI Address (VPA)" },
+                                            { value: "ACCT", label: "🏦 Bank Account" },
+                                        ],
+                                        PH: [
+                                            { value: "MOBI", label: "📱 Mobile Number" },
+                                            { value: "ACCT", label: "🏦 Bank Account" },
+                                        ],
+                                    }[destCountry] || [{ value: "MOBI", label: "📱 Mobile Number" }]}
                                     value={proxyType}
                                     onChange={(v) => v && setProxyType(v)}
                                 />
-                                <TextInput
+                                <Autocomplete
                                     label="Proxy Value"
-                                    description="Recipient identifier for PDO lookup"
+                                    description="Type to search registered contacts or enter any value"
                                     value={proxyValue}
-                                    onChange={(e) => setProxyValue(e.target.value)}
-                                    placeholder="+919123456789"
+                                    data={proxySuggestions}
+                                    onChange={(val) => {
+                                        // Auto-clean: if value contains em dash from option selection, extract pure proxy value
+                                        const cleanVal = val.includes(" — ") ? val.split(" — ")[0] : val;
+                                        setProxyValue(cleanVal);
+                                        if (cleanVal.length >= 2) {
+                                            searchProxies({ countryCode: destCountry, proxyType, q: cleanVal })
+                                                .then(res => setProxySuggestions(
+                                                    res.results.map(r => `${r.proxyValue} — ${r.displayName}`)
+                                                ))
+                                                .catch(() => setProxySuggestions([]));
+                                        } else {
+                                            setProxySuggestions([]);
+                                        }
+                                    }}
+                                    placeholder={proxyType === "VPA" ? "rajesh@upi" : proxyType === "EMAL" ? "budi@example.co.id" : "+6281234567890"}
                                     leftSection={<IconPhone size={16} />}
                                 />
                             </SimpleGrid>
@@ -763,59 +810,11 @@ export function InteractiveDemo() {
                         icon={<IconReceipt size={18} />}
                     >
                         <Stack gap="md" mt="xl">
-                            {ptd && (
-                                <Card withBorder bg="var(--mantine-color-dark-7)">
-                                    <Title order={5} mb="md">Pre-Transaction Disclosure</Title>
-                                    <SimpleGrid cols={isMobile ? 1 : 3} spacing="lg">
-                                        <Box>
-                                            <Text size="xs" c="dimmed">Sender Pays (Total)</Text>
-                                            <Text size="xl" fw={700} c="blue">
-                                                {ptd.sourceCurrency} {Number(ptd.senderTotal).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                            </Text>
-                                        </Box>
-                                        <Box>
-                                            <Text size="xs" c="dimmed">Recipient Gets (Net)</Text>
-                                            <Text size="xl" fw={700} c="green">
-                                                {ptd.destinationCurrency} {Number(ptd.recipientNetAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                            </Text>
-                                        </Box>
-                                        <Box>
-                                            <Text size="xs" c="dimmed">Total Cost</Text>
-                                            <Text size="xl" fw={700} c={Number(ptd.totalCostPercent) <= 3 ? "green" : "orange"}>
-                                                {Math.abs(Number(ptd.totalCostPercent)).toFixed(2)}%
-                                            </Text>
-                                            <Text size="xs" c="dimmed">vs mid-market</Text>
-                                        </Box>
-                                    </SimpleGrid>
-
-                                    <Divider my="md" />
-
-                                    <Table withColumnBorders={false}>
-                                        <Table.Tbody>
-                                            <Table.Tr>
-                                                <Table.Td>Principal (FX Amount)</Table.Td>
-                                                <Table.Td ta="right">{ptd.sourceCurrency} {Number(ptd.senderPrincipal).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Table.Td>
-                                            </Table.Tr>
-                                            <Table.Tr>
-                                                <Table.Td>Source PSP Fee <Text span size="xs" c="dimmed">({sourceFeeType === "INVOICED" ? "Invoiced" : "Deducted"})</Text></Table.Td>
-                                                <Table.Td ta="right">{ptd.sourceCurrency} {Number(ptd.sourcePspFee).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Table.Td>
-                                            </Table.Tr>
-                                            <Table.Tr>
-                                                <Table.Td>Scheme Fee</Table.Td>
-                                                <Table.Td ta="right">{ptd.sourceCurrency} {Number(ptd.schemeFee).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Table.Td>
-                                            </Table.Tr>
-                                            <Table.Tr>
-                                                <Table.Td>Destination PSP Fee</Table.Td>
-                                                <Table.Td ta="right">{ptd.destinationCurrency} {Number(ptd.destinationPspFee).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Table.Td>
-                                            </Table.Tr>
-                                        </Table.Tbody>
-                                    </Table>
-                                </Card>
-                            )}
+                            {ptd && <FeeCard fee={ptd} quote={selectedQuote} now={now} />}
 
                             {/* Embedded XML Preview */}
                             {selectedQuote && ptd && (
-                                <Card withBorder bg="var(--mantine-color-dark-8)" p="md">
+                                <Card withBorder bg="light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-8))" p="md">
                                     <Group justify="space-between" mb="xs">
                                         <Group gap="xs">
                                             <IconCode size={18} color="var(--mantine-color-blue-4)" />
@@ -888,9 +887,9 @@ export function InteractiveDemo() {
                     {/* Step 4: Lifecycle Trace */}
                     <Stepper.Completed>
                         <Stack gap="md" mt="xl">
-                            {paymentResult && (paymentResult.status === "ACCC" || paymentResult.status === "ACSP") ? (
+                            {paymentResult && (paymentResult.status === "ACCC" || paymentResult.status === "ACSP" || paymentResult.status === "ACSC") ? (
                                 <>
-                                    <Alert icon={<IconCheck size={18} />} color="green" title={paymentResult.status === "ACCC" ? "Payment Completed" : "Settlement in Progress"}>
+                                    <Alert icon={<IconCheck size={18} />} color="green" title={paymentResult.status === "ACCC" ? "Payment Completed" : paymentResult.status === "ACSC" ? "Settlement Completed" : "Settlement in Progress"}>
                                         {paymentResult.status === "ACCC"
                                             ? "Settlement confirmed. Recipient has been credited."
                                             : "Payment accepted by Nexus. Settlement is in progress."}
@@ -899,7 +898,7 @@ export function InteractiveDemo() {
                                     <Card withBorder p="md">
                                         <Group justify="space-between" align="center" mb="md">
                                             <Text size="sm" fw={500}>Transaction ID (UETR)</Text>
-                                            <Badge color="green">ACCC</Badge>
+                                            <Badge color="green">{paymentResult.status}</Badge>
                                         </Group>
                                         <Code block style={{ fontSize: "0.85rem", wordBreak: "break-all" }}>
                                             {paymentResult.uetr}
@@ -917,26 +916,95 @@ export function InteractiveDemo() {
 
                                     <Card withBorder>
                                         <Title order={5} mb="md">Payment Lifecycle Trace</Title>
-                                        <Timeline active={6} bulletSize={24} lineWidth={2}>
-                                            <Timeline.Item bullet={<IconSend size={12} />} title="Quote Requested" color="green">
-                                                <Text size="xs" c="dimmed">Source PSP called GET /quotes</Text>
-                                            </Timeline.Item>
-                                            <Timeline.Item bullet={<IconArrowsExchange size={12} />} title="Quote Selected" color="green">
-                                                <Text size="xs" c="dimmed">Selected {selectedQuote?.fxpName} @ {selectedQuote?.exchangeRate}</Text>
-                                            </Timeline.Item>
-                                            <Timeline.Item bullet={<IconReceipt size={12} />} title="PTD Generated" color="green">
-                                                <Text size="xs" c="dimmed">Pre-transaction disclosure computed</Text>
-                                            </Timeline.Item>
-                                            <Timeline.Item bullet={<IconBuildingBank size={12} />} title="pacs.008 Submitted" color="green">
-                                                <Text size="xs" c="dimmed">UETR: {paymentResult.uetr.substring(0, 8)}...</Text>
-                                            </Timeline.Item>
-                                            <Timeline.Item bullet={<IconServer size={12} />} title="Nexus Validated" color="green">
-                                                <Text size="xs" c="dimmed">Quote ID, rate, SAPs verified</Text>
-                                            </Timeline.Item>
-                                            <Timeline.Item bullet={<IconBuildingBank size={12} />} title="Settlement Complete" color="green">
-                                                <Text size="xs" c="dimmed">pacs.002 ACCC received</Text>
-                                            </Timeline.Item>
-                                        </Timeline>
+                                        <Accordion defaultValue={["1", "2", "3"]} multiple>
+                                            <Accordion.Item value="1">
+                                                <Accordion.Control>
+                                                    <Group justify="space-between">
+                                                        <Text size="sm" fw={500}>Phase 1: Payment Setup</Text>
+                                                        <Badge size="sm" color="green">3/3</Badge>
+                                                    </Group>
+                                                </Accordion.Control>
+                                                <Accordion.Panel>
+                                                    <Timeline active={3} bulletSize={20} lineWidth={2}>
+                                                        <Timeline.Item bullet={<IconCheck size={10} />} color="green" title={
+                                                            <Group gap="xs"><Text size="sm" fw={700}>1. Source Country Selected</Text><Badge size="xs" variant="outline">-</Badge></Group>
+                                                        }>
+                                                            <Text size="xs" c="dimmed" fs="italic">GET /countries</Text>
+                                                        </Timeline.Item>
+                                                        <Timeline.Item bullet={<IconCheck size={10} />} color="green" title={
+                                                            <Group gap="xs"><Text size="sm" fw={700}>2. Destination Country Selected</Text><Badge size="xs" variant="outline">-</Badge></Group>
+                                                        }>
+                                                            <Text size="xs" c="dimmed" fs="italic">GET /countries/{destCountry}/address-types</Text>
+                                                        </Timeline.Item>
+                                                        <Timeline.Item bullet={<IconCheck size={10} />} color="green" title={
+                                                            <Group gap="xs"><Text size="sm" fw={700}>3. Amount Specified</Text><Badge size="xs" variant="outline">-</Badge></Group>
+                                                        }>
+                                                            <Text size="xs" c="dimmed" fs="italic">{amountType} amount: {amount.toLocaleString()}</Text>
+                                                        </Timeline.Item>
+                                                    </Timeline>
+                                                </Accordion.Panel>
+                                            </Accordion.Item>
+
+                                            <Accordion.Item value="2">
+                                                <Accordion.Control>
+                                                    <Group justify="space-between">
+                                                        <Text size="sm" fw={500}>Phase 2: Quoting & FX</Text>
+                                                        <Badge size="sm" color="green">3/3</Badge>
+                                                    </Group>
+                                                </Accordion.Control>
+                                                <Accordion.Panel>
+                                                    <Timeline active={3} bulletSize={20} lineWidth={2}>
+                                                        <Timeline.Item bullet={<IconCheck size={10} />} color="green" title={
+                                                            <Group gap="xs"><Text size="sm" fw={700}>4. Quotes Retrieved</Text><Badge size="xs" variant="outline">pacs.008</Badge></Group>
+                                                        }>
+                                                            <Text size="xs" c="dimmed" fs="italic">GET /quotes — {quotes.length} quotes received</Text>
+                                                        </Timeline.Item>
+                                                        <Timeline.Item bullet={<IconCheck size={10} />} color="green" title={
+                                                            <Group gap="xs"><Text size="sm" fw={700}>5. Quote Selected</Text><Badge size="xs" variant="outline">-</Badge></Group>
+                                                        }>
+                                                            <Text size="xs" c="dimmed" fs="italic">{selectedQuote?.fxpName} @ {Number(selectedQuote?.exchangeRate || 0).toFixed(4)}</Text>
+                                                        </Timeline.Item>
+                                                        <Timeline.Item bullet={<IconCheck size={10} />} color="green" title={
+                                                            <Group gap="xs"><Text size="sm" fw={700}>6. PTD Generated</Text><Badge size="xs" variant="outline">-</Badge></Group>
+                                                        }>
+                                                            {ptd && (
+                                                                <Box mt={4} p="xs" bg="light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-6))" style={{ borderRadius: "4px" }}>
+                                                                    <Text size="xs">Rate: {ptd.marketRate} • Total Debit: {ptd.sourceCurrency} {ptd.senderTotal}</Text>
+                                                                </Box>
+                                                            )}
+                                                        </Timeline.Item>
+                                                    </Timeline>
+                                                </Accordion.Panel>
+                                            </Accordion.Item>
+
+                                            <Accordion.Item value="3">
+                                                <Accordion.Control>
+                                                    <Group justify="space-between">
+                                                        <Text size="sm" fw={500}>Phase 3: Processing & Settlement</Text>
+                                                        <Badge size="sm" color="green">3/3</Badge>
+                                                    </Group>
+                                                </Accordion.Control>
+                                                <Accordion.Panel>
+                                                    <Timeline active={3} bulletSize={20} lineWidth={2}>
+                                                        <Timeline.Item bullet={<IconCheck size={10} />} color="green" title={
+                                                            <Group gap="xs"><Text size="sm" fw={700}>7. pacs.008 Submitted</Text><Badge size="xs" variant="outline">pacs.008</Badge></Group>
+                                                        }>
+                                                            <Text size="xs" c="dimmed" fs="italic">POST /iso20022/pacs008 — UETR: {paymentResult.uetr.substring(0, 8)}...</Text>
+                                                        </Timeline.Item>
+                                                        <Timeline.Item bullet={<IconCheck size={10} />} color="green" title={
+                                                            <Group gap="xs"><Text size="sm" fw={700}>8. Nexus Validated</Text><Badge size="xs" variant="outline">pacs.002</Badge></Group>
+                                                        }>
+                                                            <Text size="xs" c="dimmed" fs="italic">Quote ID, rate, SAPs verified</Text>
+                                                        </Timeline.Item>
+                                                        <Timeline.Item bullet={<IconCheck size={10} />} color="green" title={
+                                                            <Group gap="xs"><Text size="sm" fw={700}>9. Settlement Complete</Text><Badge size="xs" variant="outline">pacs.002</Badge></Group>
+                                                        }>
+                                                            <Text size="xs" c="green" fw={700} mt={4}>{paymentResult.status}: Settlement Confirmed</Text>
+                                                        </Timeline.Item>
+                                                    </Timeline>
+                                                </Accordion.Panel>
+                                            </Accordion.Item>
+                                        </Accordion>
                                     </Card>
                                 </>
                             ) : paymentResult ? (
@@ -966,28 +1034,89 @@ export function InteractiveDemo() {
 
                                     <Card withBorder>
                                         <Title order={5} mb="md">Payment Lifecycle Trace</Title>
-                                        <Timeline active={4} bulletSize={24} lineWidth={2}>
-                                            <Timeline.Item bullet={<IconSend size={12} />} title="Quote Requested" color="green">
-                                                <Text size="xs" c="dimmed">Source PSP called GET /quotes</Text>
-                                            </Timeline.Item>
-                                            <Timeline.Item bullet={<IconArrowsExchange size={12} />} title="Quote Selected" color="green">
-                                                <Text size="xs" c="dimmed">Selected {selectedQuote?.fxpName} @ {selectedQuote?.exchangeRate}</Text>
-                                            </Timeline.Item>
-                                            <Timeline.Item bullet={<IconReceipt size={12} />} title="PTD Generated" color="green">
-                                                <Text size="xs" c="dimmed">Pre-transaction disclosure computed</Text>
-                                            </Timeline.Item>
-                                            <Timeline.Item bullet={<IconBuildingBank size={12} />} title="pacs.008 Submitted" color="green">
-                                                <Text size="xs" c="dimmed">UETR: {paymentResult.uetr.substring(0, 8)}...</Text>
-                                            </Timeline.Item>
-                                            <Timeline.Item bullet={<IconX size={12} />} title={`Rejected: ${paymentResult.status}`} color="red">
-                                                <Text size="xs" c="red" fw={500}>{paymentResult.error}</Text>
-                                                <Code block mt="xs" style={{ fontSize: "0.7rem" }}>
-                                                    {`pacs.002 Status: ${paymentResult.status}
-Reason: ${paymentResult.error}
-UETR: ${paymentResult.uetr}`}
-                                                </Code>
-                                            </Timeline.Item>
-                                        </Timeline>
+                                        <Accordion defaultValue={["1", "2", "3"]} multiple>
+                                            <Accordion.Item value="1">
+                                                <Accordion.Control>
+                                                    <Group justify="space-between">
+                                                        <Text size="sm" fw={500}>Phase 1: Payment Setup</Text>
+                                                        <Badge size="sm" color="green">3/3</Badge>
+                                                    </Group>
+                                                </Accordion.Control>
+                                                <Accordion.Panel>
+                                                    <Timeline active={3} bulletSize={20} lineWidth={2}>
+                                                        <Timeline.Item bullet={<IconCheck size={10} />} color="green" title={
+                                                            <Group gap="xs"><Text size="sm" fw={700}>1. Source Country Selected</Text></Group>
+                                                        }>
+                                                            <Text size="xs" c="dimmed" fs="italic">GET /countries</Text>
+                                                        </Timeline.Item>
+                                                        <Timeline.Item bullet={<IconCheck size={10} />} color="green" title={
+                                                            <Group gap="xs"><Text size="sm" fw={700}>2. Destination Country Selected</Text></Group>
+                                                        }>
+                                                            <Text size="xs" c="dimmed" fs="italic">GET /countries/{destCountry}/address-types</Text>
+                                                        </Timeline.Item>
+                                                        <Timeline.Item bullet={<IconCheck size={10} />} color="green" title={
+                                                            <Group gap="xs"><Text size="sm" fw={700}>3. Amount Specified</Text></Group>
+                                                        }>
+                                                            <Text size="xs" c="dimmed" fs="italic">{amountType} amount: {amount.toLocaleString()}</Text>
+                                                        </Timeline.Item>
+                                                    </Timeline>
+                                                </Accordion.Panel>
+                                            </Accordion.Item>
+
+                                            <Accordion.Item value="2">
+                                                <Accordion.Control>
+                                                    <Group justify="space-between">
+                                                        <Text size="sm" fw={500}>Phase 2: Quoting & FX</Text>
+                                                        <Badge size="sm" color="green">3/3</Badge>
+                                                    </Group>
+                                                </Accordion.Control>
+                                                <Accordion.Panel>
+                                                    <Timeline active={3} bulletSize={20} lineWidth={2}>
+                                                        <Timeline.Item bullet={<IconCheck size={10} />} color="green" title={
+                                                            <Group gap="xs"><Text size="sm" fw={700}>4. Quotes Retrieved</Text><Badge size="xs" variant="outline">pacs.008</Badge></Group>
+                                                        }>
+                                                            <Text size="xs" c="dimmed" fs="italic">GET /quotes — {quotes.length} quotes received</Text>
+                                                        </Timeline.Item>
+                                                        <Timeline.Item bullet={<IconCheck size={10} />} color="green" title={
+                                                            <Group gap="xs"><Text size="sm" fw={700}>5. Quote Selected</Text></Group>
+                                                        }>
+                                                            <Text size="xs" c="dimmed" fs="italic">{selectedQuote?.fxpName} @ {Number(selectedQuote?.exchangeRate || 0).toFixed(4)}</Text>
+                                                        </Timeline.Item>
+                                                        <Timeline.Item bullet={<IconCheck size={10} />} color="green" title={
+                                                            <Group gap="xs"><Text size="sm" fw={700}>6. PTD Generated</Text></Group>
+                                                        }>
+                                                            <Text size="xs" c="dimmed" fs="italic">Pre-transaction disclosure computed</Text>
+                                                        </Timeline.Item>
+                                                    </Timeline>
+                                                </Accordion.Panel>
+                                            </Accordion.Item>
+
+                                            <Accordion.Item value="3">
+                                                <Accordion.Control>
+                                                    <Group justify="space-between">
+                                                        <Text size="sm" fw={500}>Phase 3: Processing & Settlement</Text>
+                                                        <Badge size="sm" color="red">1/2</Badge>
+                                                    </Group>
+                                                </Accordion.Control>
+                                                <Accordion.Panel>
+                                                    <Timeline active={1} bulletSize={20} lineWidth={2}>
+                                                        <Timeline.Item bullet={<IconCheck size={10} />} color="green" title={
+                                                            <Group gap="xs"><Text size="sm" fw={700}>7. pacs.008 Submitted</Text><Badge size="xs" variant="outline">pacs.008</Badge></Group>
+                                                        }>
+                                                            <Text size="xs" c="dimmed" fs="italic">POST /iso20022/pacs008 — UETR: {paymentResult.uetr.substring(0, 8)}...</Text>
+                                                        </Timeline.Item>
+                                                        <Timeline.Item bullet={<IconX size={10} />} color="red" title={
+                                                            <Group gap="xs"><Text size="sm" fw={700}>8. Rejected: {paymentResult.status}</Text><Badge size="xs" color="red" variant="filled">pacs.002</Badge></Group>
+                                                        }>
+                                                            <Text size="xs" c="red" fw={500}>{paymentResult.error}</Text>
+                                                            <Code block mt="xs" style={{ fontSize: "0.7rem" }}>
+                                                                {`pacs.002 Status: ${paymentResult.status}\nReason: ${paymentResult.error}\nUETR: ${paymentResult.uetr}`}
+                                                            </Code>
+                                                        </Timeline.Item>
+                                                    </Timeline>
+                                                </Accordion.Panel>
+                                            </Accordion.Item>
+                                        </Accordion>
                                     </Card>
                                 </>
                             ) : null}

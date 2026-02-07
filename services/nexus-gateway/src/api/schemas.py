@@ -539,18 +539,26 @@ class PSPPaymentSummary(BaseModel):
 
 class ProxyResolutionRequest(BaseModel):
     """Request to resolve a proxy to account details."""
-    proxyType: str
-    proxyValue: str
-    sourceCountry: str
-    destinationCountry: str
+    proxy_type: str = Field(..., alias="proxyType")
+    proxy_value: str = Field(..., alias="proxyValue")
+    source_country: str = Field(..., alias="sourceCountry")
+    destination_country: str = Field(..., alias="destinationCountry")
+    structured_data: Optional[dict] = Field(None, alias="structuredData")
+    
+    class Config:
+        populate_by_name = True
 
 
 class ProxyResolutionResponse(BaseModel):
     """Response containing resolved account details."""
-    creditorName: str
-    creditorAccount: str
-    creditorAgentBic: str
-    creditorAgentName: str
+    resolutionId: str
+    timestamp: str
+    accountNumber: Optional[str] = None
+    accountType: Optional[str] = None
+    agentBic: Optional[str] = None
+    beneficiaryName: Optional[str] = None
+    displayName: Optional[str] = None
+    status: str
 
 
 # =============================================================================
@@ -559,96 +567,111 @@ class ProxyResolutionResponse(BaseModel):
 
 class QRParseRequest(BaseModel):
     """Request to parse an EMVCo QR code string."""
-    qr_data: str = Field(..., alias="qrData")
+    qrData: str
 
 
 class MerchantAccountInfo(BaseModel):
     """Merchant account information parsed from QR."""
-    globally_unique_identifier: str = Field(..., alias="globallyUniqueIdentifier")
-    payment_network_specific: dict[str, str] = Field(..., alias="paymentNetworkSpecific")
+    scheme: str
+    proxyType: Optional[str] = None
+    proxyValue: Optional[str] = None
+    editable: bool = False
 
 
 class QRParseResponse(BaseModel):
     """Parsed QR data response."""
-    payload_format_indicator: str = Field(..., alias="payloadFormatIndicator")
-    point_of_initiation_method: str = Field(..., alias="pointOfInitiationMethod")
-    merchant_account_information: dict[str, MerchantAccountInfo] = Field(..., alias="merchantAccountInformation")
-    merchant_category_code: str = Field(..., alias="merchantCategoryCode")
-    transaction_currency: str = Field(..., alias="transactionCurrency")
-    transaction_amount: Optional[str] = Field(None, alias="transactionAmount")
-    country_code: str = Field(..., alias="countryCode")
-    merchant_name: str = Field(..., alias="merchantName")
-    merchant_city: str = Field(..., alias="merchantCity")
+    formatIndicator: str
+    initiationType: str
+    merchantAccountInfo: MerchantAccountInfo
+    merchantCategoryCode: Optional[str] = None
+    transactionCurrency: Optional[str] = None
+    transactionCurrencyCode: Optional[str] = None
+    transactionAmount: Optional[str] = None
+    countryCode: Optional[str] = None
+    merchantName: Optional[str] = None
+    merchantCity: Optional[str] = None
+    additionalData: Optional[dict] = None
+    crc: str = ""
+    crcValid: bool = False
+    rawTags: dict = {}
 
 
 class QRGenerateRequest(BaseModel):
     """Request to generate an EMVCo QR code."""
-    merchant_name: str = Field(..., alias="merchantName")
-    merchant_city: str = Field(..., alias="merchantCity")
-    country_code: str = Field(..., alias="countryCode")
-    transaction_amount: float = Field(..., alias="transactionAmount")
-    transaction_currency: str = Field(..., alias="transactionCurrency")
-    proxy_type: str = Field(..., alias="proxyType")
-    proxy_value: str = Field(..., alias="proxyValue")
+    scheme: str
+    proxyType: str
+    proxyValue: str
+    amount: Optional[float] = None
+    merchantName: Optional[str] = None
+    merchantCity: Optional[str] = None
+    reference: Optional[str] = None
+    editable: bool = True
 
 
 class QRGenerateResponse(BaseModel):
     """Generated QR data response."""
-    qr_data: str = Field(..., alias="qrData")
+    qrData: str
+    scheme: str
 
 
 class QRValidateRequest(BaseModel):
     """Request to validate an EMVCo QR code."""
-    qr_data: str = Field(..., alias="qrData")
+    qrData: str
 
 
 class QRValidateResponse(BaseModel):
     """QR validation results."""
-    is_valid: bool = Field(..., alias="isValid")
-    checksum_valid: bool = Field(..., alias="checksumValid")
+    valid: bool
+    crcValid: bool = False
+    formatValid: bool = False
     errors: list[str] = []
 
 
 class UPIQRData(BaseModel):
     """UPI specific QR data."""
-    payee_vpa: str = Field(..., alias="payeeVpa")
-    payee_name: str = Field(..., alias="payeeName")
-    transaction_reference: Optional[str] = Field(None, alias="transactionReference")
-    transaction_note: Optional[str] = Field(None, alias="transactionNote")
-    amount: Optional[float] = None
-    currency: str = "INR"
+    pa: str
+    pn: str = ""
+    am: Optional[str] = None
+    cu: str = "INR"
+    tr: Optional[str] = None
+    tn: Optional[str] = None
+    mc: Optional[str] = None
+    mid: Optional[str] = None
+    url: Optional[str] = None
+    mode: Optional[str] = None
 
 
 class UPIParseRequest(BaseModel):
     """Request to parse a UPI deep link or QR."""
-    upi_string: str = Field(..., alias="upiString")
+    upiUri: str
 
 
 class UPIParseResponse(BaseModel):
     """Parsed UPI data."""
-    success: bool
+    valid: bool
     data: Optional[UPIQRData] = None
     error: Optional[str] = None
 
 
 class UPIToEMVCoRequest(BaseModel):
     """Request to convert UPI to EMVCo QR."""
-    upi_data: UPIQRData = Field(..., alias="upiData")
+    upiUri: str
+    merchantCity: Optional[str] = None
 
 
 class UPIToEMVCoResponse(BaseModel):
     """Response with EMVCo QR data."""
-    emvco_data: str = Field(..., alias="emvcoData")
+    emvcoData: str
 
 
 class EMVCoToUPIRequest(BaseModel):
     """Request to convert EMVCo to UPI."""
-    emvco_data: str = Field(..., alias="emvcoData")
+    emvcoData: str
 
 
 class EMVCoToUPIResponse(BaseModel):
-    """Response with UPI data."""
-    upi_data: UPIQRData = Field(..., alias="upiData")
+    """Response with UPI URI."""
+    upiUri: str
 
 
 # =============================================================================
@@ -823,12 +846,20 @@ class LiquidityReservation(BaseModel):
 
 
 class PaymentNotification(BaseModel):
-    """Notification for interbank settlement."""
+    """FXP payment notification after ACCC status."""
     uetr: str
-    amount: float
-    currency: str
-    source_agent: str
-    destination_agent: str
+    executionDate: str
+    sourceCurrency: str
+    sourceAmount: str
+    destinationCurrency: str
+    destinationAmount: str
+    exchangeRate: str
+    fxpId: str = "FXP-GLOBAL"
+    sourceSapId: str = "SAP_SG_FAST"
+    destinationSapId: str = "SAP_TH_PROMPTPAY"
+    sourceAgent: str = ""
+    destinationAgent: str = ""
+    status: str = "ACCC"
 
 
 class InterbankSettlementCalc(BaseModel):

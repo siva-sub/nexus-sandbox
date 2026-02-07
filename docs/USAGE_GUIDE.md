@@ -47,7 +47,23 @@ docker compose ps
 
 ---
 
-## 💸 Your First Payment
+## ⚡ Interactive Demo (Quick Start)
+
+Don't want to fill in every field? Use the automated demo:
+
+1. Open http://localhost:8080
+2. Click **"Demo Scenarios"** in the sidebar (or go to `/demo`)
+3. Click **Quick Demo** → Watch a full payment execute in ~10 seconds
+4. Explore the result:
+   - **FeeCard**: G20 alignment bar, dual sender/receiver fee tables, 3-tier exchange rates
+   - **Lifecycle Trace**: 3-phase Accordion (Payment Setup → Quoting & FX → Processing & Settlement)
+   - **Status Badge**: Shows `ACSC` (Settlement Confirmed) on success
+
+> **Tip**: Click **Quick Demo** multiple times — each generates a unique UETR and explores a different scenario.
+
+---
+
+## 💸 Your First Payment (Manual)
 
 ### Step 1: Select Destination
 
@@ -74,7 +90,12 @@ docker compose ps
 
 ### Step 4: Confirm & Send
 
-1. Review Pre-Transaction Disclosure (PTD) - see full fee breakdown
+1. Review **Pre-Transaction Disclosure (PTD)** — now displayed via the enhanced **FeeCard**:
+   - G20 target alignment progress bar (< 3% total cost)
+   - Sender fee breakdown table (Principal + Source PSP Fee + Nexus Scheme Fee = Total Debited)
+   - Receiver fee breakdown table (Payout Gross − Destination PSP Fee = Recipient Receives)
+   - 3-tier exchange rates (Market FX, Customer Rate after spread, Effective All-In Rate)
+   - Quote countdown timer
 2. Enter **Payment Reference** (optional message to recipient, max 140 chars)
 3. Provide **Sanctions Screening Data** (required for FATF R16 compliance):
    - Recipient address
@@ -85,7 +106,7 @@ docker compose ps
    - **HIGH**: 25-second timeout (urgent payments)
    - **NORM**: 4-hour timeout (standard payments)
 6. Click **Confirm & Send**
-7. Watch the 17-step lifecycle complete
+7. Watch the **Lifecycle Accordion** complete — 3 phased groups with step-by-step timeline
 
 > **Note**: The payment instruction includes mandatory ISO 20022 fields:
 > - `AccptncDtTm` (Acceptance Date Time)
@@ -100,8 +121,10 @@ docker compose ps
 |-----|-------------|
 | **Overview** | Transaction status, amount, participants |
 | **Lifecycle** | 17-step timeline with step indicators |
-| **Messages** | Raw pacs.008 and pacs.002 XML |
+| **Messages** | Raw pacs.008 and pacs.002 XML with syntax highlighting |
 | **Debug** | API commands and gateway context |
+
+> **Theme**: Use the 🌙/☀️ toggle in the header to switch between light and dark mode. All panels adapt automatically.
 
 ---
 
@@ -200,7 +223,9 @@ GET /v1/payments/{uetr}/messages
 - **[Dashboard Guide](./DASHBOARD_GUIDE.md)** - Detailed UI reference
 - **[Integration Guide](./INTEGRATION_GUIDE.md)** - Connect your system
 - **[E2E Demo Script](./E2E_DEMO_SCRIPT.md)** - Live demonstration
+- **[Unhappy Flows](./UNHAPPY_FLOWS.md)** - Error scenario triggers
 - **[API Reference](./api/API_REFERENCE.md)** - Endpoint documentation
+- **[Troubleshooting](./TROUBLESHOOTING.md)** - Common issues
 
 ---
 

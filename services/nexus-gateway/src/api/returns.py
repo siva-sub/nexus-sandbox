@@ -320,7 +320,7 @@ async def list_recalls(
         recalls = [r for r in recalls if r.get("status") == status.value]
     
     return RecallListResponse(
-        count=len(recalls),
+        total=len(recalls),
         recalls=recalls[:limit]
     )
 

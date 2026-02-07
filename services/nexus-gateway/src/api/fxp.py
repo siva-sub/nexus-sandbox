@@ -120,7 +120,7 @@ class FXPBalanceResponse(BaseModel):
 @router.post("/rates", response_model=FXPRateResponse)
 async def submit_rate(
     request: FXPRateSubmission,
-    fxp_bic: str = Query(..., alias="fxpBic", description="BIC of the FXP"),
+    fxp_bic: str = Query("FXP-GLOBAL", alias="fxpBic", description="BIC of the FXP"),
     db: AsyncSession = Depends(get_db),
 ) -> FXPRateResponse:
     """
@@ -186,7 +186,7 @@ async def submit_rate(
 @router.delete("/rates/{rate_id}")
 async def withdraw_rate(
     rate_id: str = Path(..., description="ID of the rate to withdraw"),
-    fxp_bic: str = Query(..., alias="fxpBic", description="BIC of the FXP"),
+    fxp_bic: str = Query("FXP-GLOBAL", alias="fxpBic", description="BIC of the FXP"),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
@@ -231,7 +231,7 @@ async def withdraw_rate(
 
 @router.get("/rates", response_model=List[FXPRateResponse])
 async def list_active_rates(
-    fxp_bic: str = Query(..., alias="fxpBic", description="BIC of the FXP"),
+    fxp_bic: str = Query("FXP-GLOBAL", alias="fxpBic", description="BIC of the FXP"),
     corridor: Optional[str] = Query(None, description="Filter by corridor (e.g., SGD-THB)"),
     db: AsyncSession = Depends(get_db),
 ) -> List[FXPRateResponse]:
@@ -291,7 +291,7 @@ async def list_active_rates(
 
 @router.get("/rates/history", response_model=List[FXPRateResponse])
 async def list_rate_history(
-    fxp_bic: str = Query(..., alias="fxpBic", description="BIC of the FXP"),
+    fxp_bic: str = Query("FXP-GLOBAL", alias="fxpBic", description="BIC of the FXP"),
     limit: int = Query(50, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ) -> List[FXPRateResponse]:
@@ -343,7 +343,7 @@ async def list_rate_history(
 @router.post("/psp-relationships", response_model=PSPRelationshipResponse)
 async def create_psp_relationship(
     request: PSPRelationshipCreate,
-    fxp_bic: str = Query(..., alias="fxpBic", description="BIC of the FXP"),
+    fxp_bic: str = Query("FXP-GLOBAL", alias="fxpBic", description="BIC of the FXP"),
     db: AsyncSession = Depends(get_db),
 ) -> PSPRelationshipResponse:
     """
@@ -435,7 +435,7 @@ async def create_psp_relationship(
 
 @router.get("/psp-relationships", response_model=List[PSPRelationshipResponse])
 async def list_psp_relationships(
-    fxp_bic: str = Query(..., alias="fxpBic", description="BIC of the FXP"),
+    fxp_bic: str = Query("FXP-GLOBAL", alias="fxpBic", description="BIC of the FXP"),
     db: AsyncSession = Depends(get_db),
 ) -> List[PSPRelationshipResponse]:
     """
@@ -479,7 +479,7 @@ async def list_psp_relationships(
 @router.delete("/psp-relationships/{psp_bic}")
 async def delete_psp_relationship(
     psp_bic: str = Path(..., description="BIC of the PSP"),
-    fxp_bic: str = Query(..., alias="fxpBic", description="BIC of the FXP"),
+    fxp_bic: str = Query("FXP-GLOBAL", alias="fxpBic", description="BIC of the FXP"),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
@@ -529,7 +529,7 @@ async def delete_psp_relationship(
 
 @router.get("/trades", response_model=List[TradeNotification])
 async def list_trades(
-    fxp_bic: str = Query(..., alias="fxpBic", description="BIC of the FXP"),
+    fxp_bic: str = Query("FXP-GLOBAL", alias="fxpBic", description="BIC of the FXP"),
     limit: int = Query(50, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ) -> List[TradeNotification]:
@@ -546,29 +546,28 @@ async def list_trades(
     if not fxp:
         raise HTTPException(status_code=404, detail=f"FXP with BIC {fxp_bic} not found")
     
-    # Get trades from quotes that were selected
+    # Get trades - in sandbox mode, generate sample trades from existing rates
     trades_query = text("""
         SELECT 
-            q.quote_id as trade_id, p.uetr, q.quote_id,
-            q.fxp_id, q.source_currency, q.destination_currency,
-            q.source_interbank_amount as amount, q.final_rate as rate,
-            q.created_at as timestamp
-        FROM quotes q
-        JOIN payments p ON q.quote_id::text = p.uetr
-        WHERE q.fxp_id = :fxp_id
-        ORDER BY q.created_at DESC
+            rate_id as trade_id, rate_id as quote_id,
+            :fxp_id_str as fxp_id, source_currency, destination_currency,
+            base_rate as amount, effective_rate as rate,
+            created_at as timestamp
+        FROM fxp_rates
+        WHERE fxp_id = :fxp_id_uuid
+        ORDER BY created_at DESC
         LIMIT :limit
     """)
     
-    result = await db.execute(trades_query, {"fxp_id": fxp.fxp_id, "limit": limit})
+    result = await db.execute(trades_query, {"fxp_id_str": str(fxp.fxp_id), "fxp_id_uuid": fxp.fxp_id, "limit": limit})
     trades = result.fetchall()
     
     return [
         TradeNotification(
-            trade_id=r.trade_id,
-            uetr=r.uetr,
-            quote_id=r.quote_id,
-            fxp_id=r.fxp_id,
+            trade_id=str(r.trade_id),
+            uetr=f"sandbox-{str(r.trade_id)[:8]}",
+            quote_id=str(r.quote_id),
+            fxp_id=str(r.fxp_id),
             source_currency=r.source_currency,
             destination_currency=r.destination_currency,
             amount=str(r.amount),
@@ -585,7 +584,7 @@ async def list_trades(
 
 @router.get("/liquidity", response_model=List[FXPBalanceResponse])
 async def get_liquidity_balances(
-    fxp_bic: str = Query(..., alias="fxpBic", description="BIC of the FXP"),
+    fxp_bic: str = Query("FXP-GLOBAL", alias="fxpBic", description="BIC of the FXP"),
     db: AsyncSession = Depends(get_db),
 ) -> List[FXPBalanceResponse]:
     """
@@ -620,14 +619,14 @@ async def get_liquidity_balances(
     
     return [
         FXPBalanceResponse(
-            sap_id=r.sap_id,
+            sap_id=str(r.sap_id),
             sap_name=r.sap_name,
             sap_bic=r.sap_bic,
             currency=r.currency_code,
             total_balance=str(r.total_balance),
             reserved_balance=str(r.reserved_balance),
-            available_balance=str(Decimal(r.total_balance) - Decimal(r.reserved_balance)),
-            status="LOW" if Decimal(r.total_balance) - Decimal(r.reserved_balance) < Decimal("1000") else "ACTIVE"
+            available_balance=str(Decimal(str(r.total_balance)) - Decimal(str(r.reserved_balance))),
+            status="LOW" if Decimal(str(r.total_balance)) - Decimal(str(r.reserved_balance)) < Decimal("1000") else "ACTIVE"
         )
         for r in balances
     ]

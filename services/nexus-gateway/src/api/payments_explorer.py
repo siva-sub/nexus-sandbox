@@ -148,11 +148,39 @@ async def get_payment_status(
     if isinstance(event_data, str):
         event_data = json.loads(event_data)
     
+    # Status reason codes - check both key names used across the codebase
+    reason_code = (
+        event_data.get("statusReasonCode") or 
+        event_data.get("reason_code") or 
+        payment.get("reason_code")
+    )
+    
+    # Reason descriptions map
+    reason_descriptions = {
+        "AB04": "Quote Expired / Exchange Rate Mismatch",
+        "TM01": "Timeout - Invalid Cut Off Time",
+        "DUPL": "Duplicate Payment Detected",
+        "AC01": "Incorrect Account Number",
+        "MS02": "Not Specified Reason - Customer Generated",
+        "RR04": "Regulatory Reason",
+        "AM04": "Insufficient Funds",
+        "BE23": "Missing Creditor Address",
+        "RC11": "Invalid Settlement Account Provider",
+        "AB03": "Timeout - Transaction Aborted",
+    }
+    
+    # Try to get reason description from event data, then fall back to our map
+    reason_desc = event_data.get("reason_description")
+    if not reason_desc and isinstance(event_data.get("errors"), list) and event_data.get("errors"):
+        reason_desc = event_data["errors"][0]
+    if not reason_desc:
+        reason_desc = reason_descriptions.get(reason_code, "")
+    
     return {
         "uetr": uetr,
         "status": payment.get("status", "UNKNOWN"),
-        "reasonCode": event_data.get("reason_code"),
-        "reasonDescription": event_data.get("reason_description"),
+        "statusReasonCode": reason_code,
+        "reasonDescription": reason_desc or reason_descriptions.get(reason_code, ""),
         "sourcePsp": payment.get("source_psp_bic"),
         "destinationPsp": payment.get("destination_psp_bic"),
         "amount": payment.get("amount"),

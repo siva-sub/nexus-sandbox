@@ -319,7 +319,7 @@ Submit a pacs.008 (FI to FI Customer Credit Transfer) payment message.
 ```json
 {
   "uetr": "550e8400-e29b-41d4-a716-446655440000",
-  "status": "ACCC",
+  "status": "ACSC",
   "message": "Payment accepted for processing",
   "callback_endpoint": "https://callback.example.com/pacs002",
   "processed_at": "2026-02-07T02:10:00Z"
@@ -404,7 +404,7 @@ List all payments with optional status filter.
   "payments": [
     {
       "uetr": "550e8400-e29b-41d4-a716-446655440000",
-      "status": "ACCC",
+      "status": "ACSC",
       "source_psp": "DBSSSGSG",
       "destination_psp": "KASITHBK",
       "amount": 100.00,
@@ -762,8 +762,8 @@ Purge old demo data.
 
 | Code | Meaning |
 |------|---------|
-| `ACCC` | Accepted Settlement Completed |
-| `ACSC` | Accepted settlement completed |
+| `ACSC` | Accepted Settlement Completed |
+| `ACCC` | Accepted Credit (alternative success code) |
 | `RJCT` | Rejected |
 | `BE02` | Beneficiary account closed |
 | `AG01` | Agent not available |

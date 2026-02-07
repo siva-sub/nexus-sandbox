@@ -136,13 +136,11 @@ export interface FXRate {
 }
 
 export interface LiquidityBalance {
-    fxpId: string;
-    fxpName: string;
+    fxp_id: string;
     currency: string;
-    totalBalance: number;
-    reservedAmount: number;
-    availableBalance: number;
-    status: "ACTIVE" | "LOW" | "CRITICAL";
+    balance: number;
+    reserved: number;
+    available: number;
 }
 
 export interface Reservation {

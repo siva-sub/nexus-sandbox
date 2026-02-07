@@ -300,29 +300,37 @@ async def confirm_sender_approval(
         raise HTTPException(status_code=410, detail="Quote has expired")
     
     # Store confirmation event for audit trail
-    event_query = text("""
-        INSERT INTO payment_events (
-            event_id, uetr, event_type, event_data, occurred_at
-        ) VALUES (
-            gen_random_uuid(), 
-            :quote_id, 
-            'SENDER_CONFIRMATION',
-            :event_data,
-            NOW()
-        )
-    """)
-    
-    import json
-    await db.execute(event_query, {
-        "quote_id": request.quoteId,
-        "event_data": json.dumps({
-            "confirmedByDebtor": request.confirmedByDebtor,
-            "debtorName": request.debtorName,
-            "step": 12,
-            "description": "Pre-Transaction Disclosure confirmed by sender"
+    try:
+        event_query = text("""
+            INSERT INTO payment_events (
+                event_id, uetr, event_type, version, actor, data, occurred_at
+            ) VALUES (
+                gen_random_uuid(), 
+                CAST(:quote_id AS uuid), 
+                'SENDER_CONFIRMATION',
+                1,
+                'SOURCE_PSP',
+                :event_data,
+                NOW()
+            )
+        """)
+        
+        import json
+        await db.execute(event_query, {
+            "quote_id": request.quoteId,
+            "event_data": json.dumps({
+                "confirmedByDebtor": request.confirmedByDebtor,
+                "debtorName": request.debtorName,
+                "step": 12,
+                "description": "Pre-Transaction Disclosure confirmed by sender"
+            })
         })
-    })
-    await db.commit()
+        await db.commit()
+    except Exception:
+        # Audit trail insert failure should not block the confirmation
+        import logging
+        logging.warning(f"Failed to store sender confirmation event for quote {request.quoteId}")
+        await db.rollback()
     
     return SenderConfirmationResponse(
         quoteId=request.quoteId,

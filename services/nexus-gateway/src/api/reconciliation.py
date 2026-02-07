@@ -62,7 +62,7 @@ from .schemas import TransactionEntry, TransactionSummary, Camt054Response
     """
 )
 async def generate_camt054(
-    ips_operator_id: str = Query(..., alias="ipsOperatorId", description="IPS Operator ID"),
+    ips_operator_id: str = Query("FAST", alias="ipsOperatorId", description="IPS Operator ID (defaults to FAST in sandbox)"),
     period_start: Optional[str] = Query(None, alias="periodStart", description="Period start (ISO 8601)"),
     period_end: Optional[str] = Query(None, alias="periodEnd", description="Period end (ISO 8601)"),
     status: str = Query("ALL", description="Filter by status: ACCC, BLCK, RJCT, or ALL"),
@@ -98,7 +98,7 @@ async def generate_camt054(
             p.debtor_account,
             p.creditor_name,
             p.creditor_account,
-            p.source_amount::text as amount,
+            p.interbank_settlement_amount::text as amount,
             p.source_currency as currency,
             p.created_at,
             COALESCE(
@@ -128,63 +128,34 @@ async def generate_camt054(
     entries = []
     for row in rows:
         entries.append(TransactionEntry(
-            messageId=f"MSG-{row.uetr[:8]}",
-            instructionId=f"INS-{row.uetr[:8]}",
             uetr=row.uetr,
-            clearingSystemRef=f"NEXUS-{row.uetr[:12]}",
-            nexusFxQuoteId=row.quote_id,
-            transactionStatus=row.status,
-            statusReasonCode=row.status_reason_code,
-            debtorName=row.debtor_name or "Unknown",
-            debtorAgent=row.debtor_agent or "UNKNOWN",
-            creditorName=row.creditor_name or "Unknown",
-            creditorAgent=row.creditor_agent or "UNKNOWN",
-            amount=row.amount or "0.00",
+            amount=float(row.amount) if row.amount else 0.0,
             currency=row.currency or "XXX",
-            transactionDateTime=row.created_at.isoformat() if row.created_at else now.isoformat()
+            direction="CREDIT",
+            processed_at=row.created_at.isoformat() if row.created_at else now.isoformat()
         ))
     
     # If no real data found, include demo example
     if len(entries) == 0:
         entries.append(TransactionEntry(
-            messageId="MSG-DEMO-001",
-            instructionId="INS-DEMO-001",
             uetr="00000000-0000-0000-0000-000000000000",
-            clearingSystemRef="NEXUS-DEMO-00000",
-            nexusFxQuoteId=None,
-            transactionStatus="ACCC",
-            statusReasonCode=None,
-            debtorName="(No payments in period)",
-            debtorAgent="XXXXX",
-            creditorName="(Run Interactive Demo to generate data)",
-            creditorAgent="XXXXX",
-            amount="0.00",
+            amount=0.0,
             currency="SGD",
-            transactionDateTime=now.isoformat()
+            direction="CREDIT",
+            processed_at=now.isoformat()
         ))
     
     # Calculate summary from real data
-    success_count = sum(1 for e in entries if e.transactionStatus == "ACCC")
-    rejected_count = sum(1 for e in entries if e.transactionStatus == "RJCT")
-    blocked_count = sum(1 for e in entries if e.transactionStatus == "BLCK")
-    
-    total_amount = sum(float(e.amount) for e in entries if e.amount and e.amount != "0.00")
+    total_amount = sum(e.amount for e in entries if e.amount > 0)
     currency = entries[0].currency if entries else "SGD"
     
     return Camt054Response(
-        messageId=f"CAMT054-{ips_operator_id}-{now.strftime('%Y%m%d%H%M%S')}",
-        creationDateTime=now.isoformat(),
-        periodStart=start_dt.isoformat(),
-        periodEnd=end_dt.isoformat(),
-        ipsOperatorId=ips_operator_id,
+        notification_id=f"CAMT054-{ips_operator_id}-{now.strftime('%Y%m%d%H%M%S')}",
+        account_number=f"SAP-{ips_operator_id}-001",
         summary=TransactionSummary(
-            totalCount=len(entries),
-            totalAmount=f"{total_amount:.2f}",
+            total_count=len(entries),
+            total_amount=total_amount,
             currency=currency,
-            netDebitCredit="DBIT" if total_amount > 0 else "CRDT",
-            successCount=success_count,
-            rejectedCount=rejected_count,
-            blockedCount=blocked_count
         ),
         entries=entries
     )
@@ -203,7 +174,7 @@ async def generate_camt054(
     """
 )
 async def get_reconciliation_summary(
-    ips_operator_id: str = Query(..., alias="ipsOperatorId"),
+    ips_operator_id: str = Query("FAST", alias="ipsOperatorId"),
     period_hours: int = Query(24, alias="periodHours", ge=1, le=168),
     db: AsyncSession = Depends(get_db)
 ) -> dict:

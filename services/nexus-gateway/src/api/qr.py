@@ -134,17 +134,30 @@ def parse_subtags(data: str) -> dict:
 # =============================================================================
 
 # Scheme identifiers in merchant account info (Tag 26-51)
+# Reference sources:
+#   PayNow:    PayNow QR Generator (eddiemoore/PayNow-QR-generator)
+#   PromptPay: jojoee/promptpay (libscrc.xmodem CRC)
+#   DuitNow:   natsu90/duitnowqr-test
+#   QRIS:      xrce/qrysis (ID.CO.QRIS.WWW + pure-Python CRC-16)
+#   BharatQR:  NPCI EMVCo specification
 SCHEME_IDENTIFIERS = {
     "SG.PAYNOW": ("PAYNOW", "SG"),
     "A000000677010111": ("PROMPTPAY", "TH"),  # PromptPay AID
     "A000000677010112": ("PROMPTPAY", "TH"),
     "PH.PPMI": ("QRPH", "PH"),
+    "PH.PPMI.P2M": ("QRPH", "PH"),           # QRPh P2M variant
     "MY.DUITNOW": ("DUITNOW", "MY"),
     "com.p2pqrpay": ("QRPH", "PH"),
+    # Indonesia - QRIS
+    "ID.CO.QRIS.WWW": ("QRIS", "ID"),         # National QRIS
+    "ID.DANA.WWW": ("QRIS", "ID"),             # DANA e-wallet
+    "ID.OVO.WWW": ("QRIS", "ID"),              # OVO e-wallet
+    "ID.GOPAY.WWW": ("QRIS", "ID"),            # GoPay
     # India - NPCI UPI / BharatQR
-    "com.npci.ok": ("UPI", "IN"),  # NPCI UPI identifier
-    "A000000524": ("UPI", "IN"),   # RuPay AID
-    "IN.NPCI": ("UPI", "IN"),
+    "com.npci.ok": ("BHARATQR", "IN"),          # NPCI UPI identifier
+    "A000000524": ("BHARATQR", "IN"),           # RuPay AID
+    "IN.NPCI": ("BHARATQR", "IN"),
+    "IN.RBI.EMVQR": ("BHARATQR", "IN"),        # RBI EMV QR
 }
 
 # Currency code mapping (ISO 4217 numeric to alpha)
@@ -240,6 +253,19 @@ def extract_proxy_info(scheme: str, account_info: dict) -> tuple[Optional[str], 
         if type_indicator.isdigit() and len(type_indicator) == 1:
             proxy_type = PROXY_TYPE_MAPPING.get(type_indicator, "MBNO")
             proxy_value = account_info.get("02")
+        else:
+            proxy_type = "MBNO"
+    
+    # QRIS format (Indonesia)
+    elif scheme == "QRIS":
+        proxy_value = account_info.get("02") or account_info.get("01")
+        proxy_type = "ACCT"  # QRIS uses merchant pan/account
+    
+    # BharatQR / UPI format
+    elif scheme in ("BHARATQR", "UPI"):
+        proxy_value = account_info.get("01") or account_info.get("02")
+        if proxy_value and "@" in proxy_value:
+            proxy_type = "VPA"  # Virtual Payment Address
         else:
             proxy_type = "MBNO"
     
@@ -415,10 +441,22 @@ async def generate_qr(request: QRGenerateRequest) -> QRGenerateResponse:
         account_info += tag("02", request.proxyValue)
         parts.append(tag("26", account_info))
     
+    elif scheme == "QRIS":
+        # QRIS format (Tag 26) - Indonesia
+        account_info = tag("00", "ID.CO.QRIS.WWW")
+        account_info += tag("01", request.proxyValue)  # Merchant ID
+        parts.append(tag("26", account_info))
+    
+    elif scheme == "BHARATQR":
+        # BharatQR format (Tag 26) - India
+        account_info = tag("00", "IN.RBI.EMVQR")
+        account_info += tag("01", request.proxyValue)  # VPA or account
+        parts.append(tag("26", account_info))
+    
     else:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported scheme: {scheme}. Valid: PAYNOW, PROMPTPAY, QRPH, DUITNOW"
+            detail=f"Unsupported scheme: {scheme}. Valid: PAYNOW, PROMPTPAY, QRPH, DUITNOW, QRIS, BHARATQR"
         )
     
     # Tag 52: Merchant Category Code (default to 0000)
@@ -430,6 +468,8 @@ async def generate_qr(request: QRGenerateRequest) -> QRGenerateResponse:
         "PROMPTPAY": "764",   # THB
         "QRPH": "608",        # PHP
         "DUITNOW": "458",     # MYR
+        "QRIS": "360",        # IDR
+        "BHARATQR": "356",    # INR
     }
     parts.append(tag("53", currency_map.get(scheme, "702")))
     
@@ -444,6 +484,8 @@ async def generate_qr(request: QRGenerateRequest) -> QRGenerateResponse:
         "PROMPTPAY": "TH",
         "QRPH": "PH",
         "DUITNOW": "MY",
+        "QRIS": "ID",
+        "BHARATQR": "IN",
     }
     parts.append(tag("58", country_map.get(scheme, "SG")))
     

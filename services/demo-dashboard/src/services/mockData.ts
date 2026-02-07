@@ -568,13 +568,13 @@ export const mockPayments = [
     }
 ];
 
-// Sample Liquidity Balances - Using correct FXP ID
+// Sample Liquidity Balances - matching backend FxpBalance schema
 export const mockLiquidityBalances = [
-    { fxpId: "FXP-ABC", fxpName: "ABC Currency Exchange", currency: "SGD", totalBalance: 5000000, reservedAmount: 125000, availableBalance: 4875000, status: "ACTIVE" },
-    { fxpId: "FXP-ABC", fxpName: "ABC Currency Exchange", currency: "THB", totalBalance: 150000000, reservedAmount: 3500000, availableBalance: 146500000, status: "ACTIVE" },
-    { fxpId: "FXP-ABC", fxpName: "ABC Currency Exchange", currency: "MYR", totalBalance: 15000000, reservedAmount: 450000, availableBalance: 14550000, status: "ACTIVE" },
-    { fxpId: "FXP-ABC", fxpName: "ABC Currency Exchange", currency: "IDR", totalBalance: 50000000000, reservedAmount: 1000000000, availableBalance: 49000000000, status: "ACTIVE" },
-    { fxpId: "FXP-XYZ", fxpName: "XYZ Forex Ltd", currency: "SGD", totalBalance: 3000000, reservedAmount: 75000, availableBalance: 2925000, status: "ACTIVE" },
+    { fxp_id: "FXP-ABC", currency: "SGD", balance: 5000000, reserved: 125000, available: 4875000 },
+    { fxp_id: "FXP-ABC", currency: "THB", balance: 150000000, reserved: 3500000, available: 146500000 },
+    { fxp_id: "FXP-ABC", currency: "MYR", balance: 15000000, reserved: 450000, available: 14550000 },
+    { fxp_id: "FXP-ABC", currency: "IDR", balance: 50000000000, reserved: 1000000000, available: 49000000000 },
+    { fxp_id: "FXP-XYZ", currency: "SGD", balance: 3000000, reserved: 75000, available: 2925000 },
 ];
 
 // Static quotes (fallback)

@@ -81,18 +81,18 @@ export function LifecycleAccordion({
                                     >
                                         {/* Step-specific details */}
                                         {step.id === 6 && feeBreakdown && (
-                                            <Box mt={4} p="xs" bg="var(--mantine-color-dark-6)" style={{ borderRadius: "4px" }}>
+                                            <Box mt={4} p="xs" bg="light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-6))" style={{ borderRadius: "4px" }}>
                                                 <Text size="xs">Rate: {feeBreakdown.marketRate} • Total Debit: {feeBreakdown.sourceCurrency} {feeBreakdown.senderTotal}</Text>
                                             </Box>
                                         )}
                                         {step.id === 8 && resolution && (
-                                            <Box mt={4} p="xs" bg="var(--mantine-color-dark-6)" style={{ borderRadius: "4px" }}>
+                                            <Box mt={4} p="xs" bg="light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-6))" style={{ borderRadius: "4px" }}>
                                                 <Text size="xs" fw={700} c="green">Resolved: {resolution.beneficiaryName || resolution.accountName}</Text>
                                                 <Text size="xs">Bank: {resolution.agentBic || resolution.bankName || "Unknown"}</Text>
                                             </Box>
                                         )}
                                         {step.id === 13 && intermediaries && (
-                                            <Box mt={4} p="xs" bg="var(--mantine-color-dark-6)" style={{ borderRadius: "4px" }}>
+                                            <Box mt={4} p="xs" bg="light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-6))" style={{ borderRadius: "4px" }}>
                                                 <Stack gap={4}>
                                                     <Group justify="space-between">
                                                         <Text size="xs" fw={700} c="blue">Source SAP (IntermediaryAgent1)</Text>
