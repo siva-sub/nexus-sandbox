@@ -199,33 +199,35 @@ export function PDOPage() {
                         {dataLoading ? (
                             <Loader size="sm" />
                         ) : registrations.length > 0 ? (
-                            <Table>
-                                <Table.Thead>
-                                    <Table.Tr>
-                                        <Table.Th>Type</Table.Th>
-                                        <Table.Th>Proxy Value</Table.Th>
-                                        <Table.Th>Masked Name</Table.Th>
-                                        <Table.Th>Bank</Table.Th>
-                                    </Table.Tr>
-                                </Table.Thead>
-                                <Table.Tbody>
-                                    {registrations.map((reg, i) => (
-                                        <Table.Tr key={i}>
-                                            <Table.Td>
-                                                <Badge size="sm" variant="outline" leftSection={PROXY_TYPE_ICONS[reg.proxy_type]}>
-                                                    {reg.proxy_type}
-                                                </Badge>
-                                            </Table.Td>
-                                            <Table.Td><Code>{reg.proxy_value}</Code></Table.Td>
-                                            <Table.Td>{reg.creditor_name_masked}</Table.Td>
-                                            <Table.Td>
-                                                <Text size="sm">{reg.bank_name}</Text>
-                                                <Text size="xs" c="dimmed">{reg.bank_bic}</Text>
-                                            </Table.Td>
+                            <Table.ScrollContainer minWidth={500}>
+                                <Table>
+                                    <Table.Thead>
+                                        <Table.Tr>
+                                            <Table.Th>Type</Table.Th>
+                                            <Table.Th>Proxy Value</Table.Th>
+                                            <Table.Th>Masked Name</Table.Th>
+                                            <Table.Th>Bank</Table.Th>
                                         </Table.Tr>
-                                    ))}
-                                </Table.Tbody>
-                            </Table>
+                                    </Table.Thead>
+                                    <Table.Tbody>
+                                        {registrations.map((reg, i) => (
+                                            <Table.Tr key={i}>
+                                                <Table.Td>
+                                                    <Badge size="sm" variant="outline" leftSection={PROXY_TYPE_ICONS[reg.proxy_type]}>
+                                                        {reg.proxy_type}
+                                                    </Badge>
+                                                </Table.Td>
+                                                <Table.Td><Code>{reg.proxy_value}</Code></Table.Td>
+                                                <Table.Td>{reg.creditor_name_masked}</Table.Td>
+                                                <Table.Td>
+                                                    <Text size="sm">{reg.bank_name}</Text>
+                                                    <Text size="xs" c="dimmed">{reg.bank_bic}</Text>
+                                                </Table.Td>
+                                            </Table.Tr>
+                                        ))}
+                                    </Table.Tbody>
+                                </Table>
+                            </Table.ScrollContainer>
                         ) : (
                             <Text c="dimmed">No registrations found</Text>
                         )}

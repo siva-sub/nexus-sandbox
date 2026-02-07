@@ -120,6 +120,10 @@ async def process_pacs004(
         pacs004_xml=xml_content
     )
     
+    # Cancel any active reservation for the returned payment
+    from ..sap import cancel_reservation_for_payment
+    await cancel_reservation_for_payment(db=db, uetr=original_uetr)
+    
     return Pacs004Response(
         returnId=return_id,
         originalUetr=original_uetr,

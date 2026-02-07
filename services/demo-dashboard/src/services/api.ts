@@ -535,10 +535,17 @@ export async function submitRate(rateData: {
     rate: number;
     spreadBps: number;
 }) {
-    return fetchJSON<import("../types").FXRate>("/v1/rates", {
+    return fetchJSON<import("../types").FXRate>("/v1/fxp/rates", {
         method: "POST",
         body: JSON.stringify(rateData),
     });
+}
+
+export async function withdrawRate(rateId: string): Promise<{ rateId: string; status: string; message: string }> {
+    if (MOCK_ENABLED) {
+        return { rateId, status: "WITHDRAWN", message: "Rate withdrawn (mock)" };
+    }
+    return fetchJSON(`/v1/fxp/rates/${rateId}`, { method: "DELETE" });
 }
 
 // Liquidity API
@@ -852,7 +859,7 @@ export interface SAPReservation {
     uetr: string;
     status: string;
     expiresAt: string;
-    createdAt: string;
+    reservedAt: string;
 }
 
 export interface SAPTransaction {
@@ -869,6 +876,8 @@ export interface ReconciliationReport {
     date: string;
     sapId: string;
     sapName: string;
+    sapBic: string;
+    fxpCode: string;
     currency: string;
     openingBalance: string;
     totalCredits: string;
@@ -879,33 +888,122 @@ export interface ReconciliationReport {
 
 export async function getSAPNostroAccounts(): Promise<NostroAccount[]> {
     if (MOCK_ENABLED) {
+        // Multi-SAP, multi-FXP nostro account ecosystem
+        // Per Nexus spec: Each FXP holds accounts at SAPs in each currency they trade
         return [
-            { accountId: "mock-1", sapId: "s1", sapName: "DBS Bank", sapBic: "DBSSSGSG", fxpId: "f1", fxpName: "GlobalFX", fxpBic: "FXP-GLOBAL", currency: "SGD", balance: "500000.00", accountNumber: "NOSTRO-001", status: "ACTIVE", createdAt: new Date().toISOString() },
-            { accountId: "mock-2", sapId: "s1", sapName: "DBS Bank", sapBic: "DBSSSGSG", fxpId: "f1", fxpName: "GlobalFX", fxpBic: "FXP-GLOBAL", currency: "THB", balance: "12500000.00", accountNumber: "NOSTRO-002", status: "ACTIVE", createdAt: new Date().toISOString() },
+            // DBS Bank (Singapore SAP) - SGD accounts
+            { accountId: "nostro-dbs-gfx-sgd", sapId: "s1", sapName: "DBS Bank", sapBic: "DBSSSGSG", fxpId: "f1", fxpName: "GlobalFX Partners", fxpBic: "GFXPSGSG", currency: "SGD", balance: "2450000.00", accountNumber: "DBS-NOSTRO-001", status: "ACTIVE", createdAt: new Date(Date.now() - 90 * 86400000).toISOString() },
+            { accountId: "nostro-dbs-apfx-sgd", sapId: "s1", sapName: "DBS Bank", sapBic: "DBSSSGSG", fxpId: "f2", fxpName: "AsiaPac FX", fxpBic: "APFXSGSG", currency: "SGD", balance: "1180000.00", accountNumber: "DBS-NOSTRO-002", status: "ACTIVE", createdAt: new Date(Date.now() - 60 * 86400000).toISOString() },
+            // Kasikorn Bank (Thailand SAP) - THB accounts
+            { accountId: "nostro-kasi-gfx-thb", sapId: "s2", sapName: "Kasikorn Bank", sapBic: "KASITHBK", fxpId: "f1", fxpName: "GlobalFX Partners", fxpBic: "GFXPSGSG", currency: "THB", balance: "85000000.00", accountNumber: "KASI-NOSTRO-001", status: "ACTIVE", createdAt: new Date(Date.now() - 90 * 86400000).toISOString() },
+            { accountId: "nostro-kasi-apfx-thb", sapId: "s2", sapName: "Kasikorn Bank", sapBic: "KASITHBK", fxpId: "f2", fxpName: "AsiaPac FX", fxpBic: "APFXSGSG", currency: "THB", balance: "42000000.00", accountNumber: "KASI-NOSTRO-002", status: "ACTIVE", createdAt: new Date(Date.now() - 45 * 86400000).toISOString() },
+            // Bank Mandiri (Indonesia SAP) - IDR accounts
+            { accountId: "nostro-bmri-gfx-idr", sapId: "s3", sapName: "Bank Mandiri", sapBic: "BMRIIDJA", fxpId: "f1", fxpName: "GlobalFX Partners", fxpBic: "GFXPSGSG", currency: "IDR", balance: "18750000000.00", accountNumber: "BMRI-NOSTRO-001", status: "ACTIVE", createdAt: new Date(Date.now() - 75 * 86400000).toISOString() },
+            { accountId: "nostro-bmri-apfx-idr", sapId: "s3", sapName: "Bank Mandiri", sapBic: "BMRIIDJA", fxpId: "f2", fxpName: "AsiaPac FX", fxpBic: "APFXSGSG", currency: "IDR", balance: "7200000000.00", accountNumber: "BMRI-NOSTRO-002", status: "ACTIVE", createdAt: new Date(Date.now() - 30 * 86400000).toISOString() },
         ];
     }
-    return fetchJSON<NostroAccount[]>("/v1/sap/nostro-accounts");
+    // Aggregate across all SAPs
+    const saps = ["DBSSSGSG", "OCBCSGSG", "KASITHBK", "MABORKKL", "BMRIIDJA", "BABORPMM", "SBININBB"];
+    const results = await Promise.all(
+        saps.map(bic => fetchJSON<NostroAccount[]>(`/v1/sap/nostro-accounts?sapBic=${bic}`).catch(() => []))
+    );
+    return results.flat();
 }
 
 export async function getSAPReservations(): Promise<SAPReservation[]> {
     if (MOCK_ENABLED) {
+        const now = new Date();
+        // Full reservation lifecycle: ACTIVE (funds locked), UTILIZED (settled),
+        // EXPIRED (timed out), CANCELLED (rejected). Only ACTIVE/PENDING count
+        // toward reserved balance — all others have released their funds.
         return [
-            { reservationId: "res-1", accountId: "a1", sapBic: "DBSSSGSG", fxpBic: "FXP-GLOBAL", currency: "SGD", amount: "10000.00", uetr: "test-uetr", status: "ACTIVE", expiresAt: new Date(Date.now() + 600000).toISOString(), createdAt: new Date().toISOString() },
+            // === ACTIVE reservations (currently locking funds) ===
+            // SGD reservations at DBS (GlobalFX) — balance 2,450,000
+            { reservationId: "res-sgd-001", accountId: "nostro-dbs-gfx-sgd", sapBic: "DBSSSGSG", fxpBic: "GFXPSGSG", currency: "SGD", amount: "450000.00", uetr: "a1b2c3d4-e5f6-7890-abcd-ef1234567890", status: "ACTIVE", expiresAt: new Date(now.getTime() + 580000).toISOString(), reservedAt: new Date(now.getTime() - 20000).toISOString() },
+            { reservationId: "res-sgd-002", accountId: "nostro-dbs-gfx-sgd", sapBic: "DBSSSGSG", fxpBic: "GFXPSGSG", currency: "SGD", amount: "875000.00", uetr: "b2c3d4e5-f6a7-8901-bcde-f23456789012", status: "ACTIVE", expiresAt: new Date(now.getTime() + 420000).toISOString(), reservedAt: new Date(now.getTime() - 180000).toISOString() },
+            { reservationId: "res-sgd-003", accountId: "nostro-dbs-gfx-sgd", sapBic: "DBSSSGSG", fxpBic: "GFXPSGSG", currency: "SGD", amount: "225000.00", uetr: "c3d4e5f6-a7b8-9012-cdef-345678901234", status: "PENDING", expiresAt: new Date(now.getTime() + 300000).toISOString(), reservedAt: new Date(now.getTime() - 5000).toISOString() },
+            // SGD reservations at DBS (AsiaPac FX) — balance 1,180,000
+            { reservationId: "res-sgd-004", accountId: "nostro-dbs-apfx-sgd", sapBic: "DBSSSGSG", fxpBic: "APFXSGSG", currency: "SGD", amount: "680000.00", uetr: "d4e5f6a7-b8c9-0123-defa-456789012345", status: "ACTIVE", expiresAt: new Date(now.getTime() + 540000).toISOString(), reservedAt: new Date(now.getTime() - 60000).toISOString() },
+            // THB reservations at Kasikorn (GlobalFX) — balance 85,000,000
+            { reservationId: "res-thb-001", accountId: "nostro-kasi-gfx-thb", sapBic: "KASITHBK", fxpBic: "GFXPSGSG", currency: "THB", amount: "28500000.00", uetr: "f6a7b8c9-d0e1-2345-fabc-678901234567", status: "ACTIVE", expiresAt: new Date(now.getTime() + 480000).toISOString(), reservedAt: new Date(now.getTime() - 120000).toISOString() },
+            // IDR reservations at Bank Mandiri (GlobalFX) — balance 18,750,000,000
+            { reservationId: "res-idr-001", accountId: "nostro-bmri-gfx-idr", sapBic: "BMRIIDJA", fxpBic: "GFXPSGSG", currency: "IDR", amount: "11750000000.00", uetr: "c9d0e1f2-a3b4-5678-cdef-901234567890", status: "ACTIVE", expiresAt: new Date(now.getTime() + 600000).toISOString(), reservedAt: new Date(now.getTime() - 15000).toISOString() },
+
+            // === UTILIZED reservations (settled — funds debited, no longer reserved) ===
+            { reservationId: "res-sgd-u01", accountId: "nostro-dbs-apfx-sgd", sapBic: "DBSSSGSG", fxpBic: "APFXSGSG", currency: "SGD", amount: "125000.00", uetr: "e5f6a7b8-c9d0-1234-efab-567890123456", status: "UTILIZED", expiresAt: new Date(now.getTime() - 300000).toISOString(), reservedAt: new Date(now.getTime() - 900000).toISOString() },
+            { reservationId: "res-thb-u01", accountId: "nostro-kasi-gfx-thb", sapBic: "KASITHBK", fxpBic: "GFXPSGSG", currency: "THB", amount: "18750000.00", uetr: "a7b8c9d0-e1f2-3456-abcd-789012345678", status: "UTILIZED", expiresAt: new Date(now.getTime() - 240000).toISOString(), reservedAt: new Date(now.getTime() - 600000).toISOString() },
+            { reservationId: "res-idr-u01", accountId: "nostro-bmri-apfx-idr", sapBic: "BMRIIDJA", fxpBic: "APFXSGSG", currency: "IDR", amount: "4500000000.00", uetr: "d0e1f2a3-b4c5-6789-defa-012345678901", status: "UTILIZED", expiresAt: new Date(now.getTime() - 60000).toISOString(), reservedAt: new Date(now.getTime() - 330000).toISOString() },
+
+            // === EXPIRED reservations (timed out — funds released back to available) ===
+            { reservationId: "res-thb-e01", accountId: "nostro-kasi-apfx-thb", sapBic: "KASITHBK", fxpBic: "APFXSGSG", currency: "THB", amount: "27300000.00", uetr: "b8c9d0e1-f2a3-4567-bcde-890123456789", status: "EXPIRED", expiresAt: new Date(now.getTime() - 120000).toISOString(), reservedAt: new Date(now.getTime() - 720000).toISOString() },
+            { reservationId: "res-sgd-e01", accountId: "nostro-dbs-gfx-sgd", sapBic: "DBSSSGSG", fxpBic: "GFXPSGSG", currency: "SGD", amount: "350000.00", uetr: "11223344-5566-7788-aabb-ccddeeff0011", status: "EXPIRED", expiresAt: new Date(now.getTime() - 1800000).toISOString(), reservedAt: new Date(now.getTime() - 2400000).toISOString() },
+
+            // === CANCELLED reservation (payment rejected — funds released) ===
+            { reservationId: "res-idr-c01", accountId: "nostro-bmri-gfx-idr", sapBic: "BMRIIDJA", fxpBic: "GFXPSGSG", currency: "IDR", amount: "2500000000.00", uetr: "aabbccdd-1122-3344-eeff-556677889900", status: "CANCELLED", expiresAt: new Date(now.getTime() - 600000).toISOString(), reservedAt: new Date(now.getTime() - 1200000).toISOString() },
         ];
     }
-    return fetchJSON<SAPReservation[]>("/v1/sap/reservations");
+    // Aggregate across all SAPs
+    const saps = ["DBSSSGSG", "OCBCSGSG", "KASITHBK", "MABORKKL", "BMRIIDJA", "BABORPMM", "SBININBB"];
+    const results = await Promise.all(
+        saps.map(bic => fetchJSON<SAPReservation[]>(`/v1/sap/reservations?sapBic=${bic}`).catch(() => []))
+    );
+    return results.flat();
 }
 
 export async function getSAPTransactions(limit?: number): Promise<SAPTransaction[]> {
-    if (MOCK_ENABLED) return [];
-    const params = limit ? `?limit=${limit}` : "";
-    return fetchJSON<SAPTransaction[]>(`/v1/sap/transactions${params}`);
+    if (MOCK_ENABLED) {
+        const now = new Date();
+        // Realistic transaction history — credits (incoming settlements) and debits (outgoing payments)
+        return [
+            // Recent SGD transactions
+            { transactionId: "txn-001", accountId: "nostro-dbs-gfx-sgd", type: "CREDIT", amount: "125000.00", currency: "SGD", reference: "Settlement SG→TH pacs.008 #a1b2c3", createdAt: new Date(now.getTime() - 1800000).toISOString() },
+            { transactionId: "txn-002", accountId: "nostro-dbs-gfx-sgd", type: "DEBIT", amount: "88000.00", currency: "SGD", reference: "Settlement TH→SG pacs.008 #d4e5f6", createdAt: new Date(now.getTime() - 3600000).toISOString() },
+            { transactionId: "txn-003", accountId: "nostro-dbs-apfx-sgd", type: "CREDIT", amount: "62500.00", currency: "SGD", reference: "Settlement SG→ID pacs.008 #x7y8z9", createdAt: new Date(now.getTime() - 5400000).toISOString() },
+            { transactionId: "txn-004", accountId: "nostro-dbs-gfx-sgd", type: "CREDIT", amount: "340000.00", currency: "SGD", reference: "FXP liquidity top-up (GlobalFX)", createdAt: new Date(now.getTime() - 14400000).toISOString() },
+            // Recent THB transactions
+            { transactionId: "txn-005", accountId: "nostro-kasi-gfx-thb", type: "DEBIT", amount: "4250000.00", currency: "THB", reference: "Settlement SG→TH pacs.008 #a1b2c3", createdAt: new Date(now.getTime() - 1800000).toISOString() },
+            { transactionId: "txn-006", accountId: "nostro-kasi-gfx-thb", type: "CREDIT", amount: "2950000.00", currency: "THB", reference: "Settlement TH→SG pacs.008 #d4e5f6", createdAt: new Date(now.getTime() - 3600000).toISOString() },
+            { transactionId: "txn-007", accountId: "nostro-kasi-apfx-thb", type: "DEBIT", amount: "8750000.00", currency: "THB", reference: "Settlement SG→TH pacs.008 #m1n2o3", createdAt: new Date(now.getTime() - 7200000).toISOString() },
+            { transactionId: "txn-008", accountId: "nostro-kasi-gfx-thb", type: "CREDIT", amount: "15000000.00", currency: "THB", reference: "FXP liquidity top-up (GlobalFX)", createdAt: new Date(now.getTime() - 28800000).toISOString() },
+            // Recent IDR transactions
+            { transactionId: "txn-009", accountId: "nostro-bmri-gfx-idr", type: "DEBIT", amount: "2350000000.00", currency: "IDR", reference: "Settlement SG→ID pacs.008 #x7y8z9", createdAt: new Date(now.getTime() - 5400000).toISOString() },
+            { transactionId: "txn-010", accountId: "nostro-bmri-apfx-idr", type: "CREDIT", amount: "1175000000.00", currency: "IDR", reference: "Settlement ID→SG pacs.008 #p4q5r6", createdAt: new Date(now.getTime() - 10800000).toISOString() },
+            { transactionId: "txn-011", accountId: "nostro-bmri-gfx-idr", type: "CREDIT", amount: "5000000000.00", currency: "IDR", reference: "FXP liquidity top-up (GlobalFX)", createdAt: new Date(now.getTime() - 43200000).toISOString() },
+            // Older transactions
+            { transactionId: "txn-012", accountId: "nostro-dbs-gfx-sgd", type: "DEBIT", amount: "195000.00", currency: "SGD", reference: "Settlement SG→MY pacs.008 #j1k2l3", createdAt: new Date(now.getTime() - 86400000).toISOString() },
+            { transactionId: "txn-013", accountId: "nostro-kasi-gfx-thb", type: "DEBIT", amount: "6800000.00", currency: "THB", reference: "Settlement MY→TH pacs.008 #g7h8i9", createdAt: new Date(now.getTime() - 86400000).toISOString() },
+            { transactionId: "txn-014", accountId: "nostro-bmri-apfx-idr", type: "DEBIT", amount: "950000000.00", currency: "IDR", reference: "Settlement PH→ID pacs.008 #s1t2u3", createdAt: new Date(now.getTime() - 172800000).toISOString() },
+            { transactionId: "txn-015", accountId: "nostro-dbs-apfx-sgd", type: "CREDIT", amount: "500000.00", currency: "SGD", reference: "FXP liquidity top-up (AsiaPac FX)", createdAt: new Date(now.getTime() - 259200000).toISOString() },
+        ];
+    }
+    // Aggregate across all SAPs
+    const saps = ["DBSSSGSG", "OCBCSGSG", "KASITHBK", "MABORKKL", "BMRIIDJA", "BABORPMM", "SBININBB"];
+    const params = limit ? `&limit=${limit}` : "";
+    const results = await Promise.all(
+        saps.map(bic => fetchJSON<SAPTransaction[]>(`/v1/sap/transactions?sapBic=${bic}${params}`).catch(() => []))
+    );
+    return results.flat();
 }
 
 export async function getSAPReconciliation(date?: string): Promise<ReconciliationReport[]> {
-    if (MOCK_ENABLED) return [];
-    const params = date ? `?date=${date}` : "";
-    return fetchJSON<ReconciliationReport[]>(`/v1/sap/reconciliation${params}`);
+    if (MOCK_ENABLED) {
+        const today = new Date().toISOString().split("T")[0];
+        const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+        // camt.054 Credit Notifications — daily reconciliation per SAP per currency
+        return [
+            { date: today, sapId: "s1", sapName: "DBS Bank (SGD)", sapBic: "DBSSSGSG", fxpCode: "FXP-ABC", currency: "SGD", openingBalance: "2073000.00", totalCredits: "527500.00", totalDebits: "283000.00", closingBalance: "2450000.00", transactionCount: 4 },
+            { date: today, sapId: "s2", sapName: "Kasikorn Bank (THB)", sapBic: "KASITHBK", fxpCode: "FXP-ABC", currency: "THB", openingBalance: "121600000.00", totalCredits: "17950000.00", totalDebits: "19800000.00", closingBalance: "127000000.00", transactionCount: 5 },
+            { date: today, sapId: "s3", sapName: "Bank Mandiri (IDR)", sapBic: "BMRIIDJA", fxpCode: "FXP-ABC", currency: "IDR", openingBalance: "22925000000.00", totalCredits: "6175000000.00", totalDebits: "3300000000.00", closingBalance: "25950000000.00", transactionCount: 3 },
+            { date: yesterday, sapId: "s1", sapName: "DBS Bank (SGD)", sapBic: "DBSSSGSG", fxpCode: "FXP-ABC", currency: "SGD", openingBalance: "2268000.00", totalCredits: "195000.00", totalDebits: "390000.00", closingBalance: "2073000.00", transactionCount: 3 },
+        ];
+    }
+    // Aggregate across all SAPs
+    const saps = ["DBSSSGSG", "OCBCSGSG", "KASITHBK", "MABORKKL", "BMRIIDJA", "BABORPMM", "SBININBB"];
+    const dateParam = date ? `&date=${date}` : "";
+    const results = await Promise.all(
+        saps.map(bic => fetchJSON<ReconciliationReport[]>(`/v1/sap/reconciliation?sapBic=${bic}${dateParam}`).catch(() => []))
+    );
+    return results.flat();
 }
 
 // FXP API Functions - Connected to backend endpoints
@@ -914,7 +1012,7 @@ export interface FXPRate {
     fxpId: string;
     sourceCurrency: string;
     destinationCurrency: string;
-    baseRate: string;
+    rate: string;
     spreadBps: number;
     effectiveRate: string;
     validUntil: string;
@@ -951,14 +1049,22 @@ export interface PSPRelationship {
     improvementBps: number;
 }
 
-export async function getFXPRates(): Promise<FXPRate[]> {
+export async function getFXPRates(fxpBic?: string): Promise<FXPRate[]> {
     if (MOCK_ENABLED) {
         return [
-            { rateId: "r-1", fxpId: "f1", sourceCurrency: "SGD", destinationCurrency: "THB", baseRate: "26.4521", spreadBps: 25, effectiveRate: "26.3860", validUntil: new Date(Date.now() + 60000).toISOString(), status: "ACTIVE" },
-            { rateId: "r-2", fxpId: "f1", sourceCurrency: "SGD", destinationCurrency: "MYR", baseRate: "3.4123", spreadBps: 30, effectiveRate: "3.4021", validUntil: new Date(Date.now() + 45000).toISOString(), status: "ACTIVE" },
+            { rateId: "r-1", fxpId: "f1", sourceCurrency: "SGD", destinationCurrency: "THB", rate: "26.4521", spreadBps: 25, effectiveRate: "26.3860", validUntil: new Date(Date.now() + 60000).toISOString(), status: "ACTIVE" },
+            { rateId: "r-2", fxpId: "f1", sourceCurrency: "SGD", destinationCurrency: "MYR", rate: "3.4123", spreadBps: 30, effectiveRate: "3.4021", validUntil: new Date(Date.now() + 45000).toISOString(), status: "ACTIVE" },
         ];
     }
-    return fetchJSON<FXPRate[]>("/v1/fxp/rates");
+    // Fetch rates for all 3 FXPs and merge them
+    const fxps = ["FXP-ABC", "FXP-XYZ", "FXP-GLOBAL"];
+    if (fxpBic) {
+        return fetchJSON<FXPRate[]>(`/v1/fxp/rates?fxpBic=${fxpBic}`);
+    }
+    const results = await Promise.all(
+        fxps.map(code => fetchJSON<FXPRate[]>(`/v1/fxp/rates?fxpBic=${code}`).catch(() => []))
+    );
+    return results.flat();
 }
 
 export async function getFXPTrades(limit?: number): Promise<FXPTrade[]> {
@@ -969,8 +1075,11 @@ export async function getFXPTrades(limit?: number): Promise<FXPTrade[]> {
 
 export async function getFXPLiquidity(): Promise<FXPBalance[]> {
     if (MOCK_ENABLED) {
+        // Balances at SAPs — must match SAP nostro accounts (GlobalFX Partners perspective)
         return [
-            { sapId: "s1", sapName: "DBS Bank", sapBic: "DBSSSGSG", currency: "SGD", totalBalance: "500000.00", reservedBalance: "50000.00", availableBalance: "450000.00", status: "ACTIVE" },
+            { sapId: "s1", sapName: "DBS Bank", sapBic: "DBSSSGSG", currency: "SGD", totalBalance: "2450000.00", reservedBalance: "1550000.00", availableBalance: "900000.00", status: "ACTIVE" },
+            { sapId: "s2", sapName: "Kasikorn Bank", sapBic: "KASITHBK", currency: "THB", totalBalance: "85000000.00", reservedBalance: "47250000.00", availableBalance: "37750000.00", status: "ACTIVE" },
+            { sapId: "s3", sapName: "Bank Mandiri", sapBic: "BMRIIDJA", currency: "IDR", totalBalance: "18750000000.00", reservedBalance: "11750000000.00", availableBalance: "7000000000.00", status: "ACTIVE" },
         ];
     }
     return fetchJSON<FXPBalance[]>("/v1/fxp/liquidity");

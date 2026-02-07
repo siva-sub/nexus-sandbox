@@ -231,26 +231,28 @@ export function PSPPage() {
                     <Tabs.Panel value="registry" pt="md">
                         <Card>
                             <Title order={5} mb="md">Registered PSPs ({psps.length})</Title>
-                            <Table>
-                                <Table.Thead>
-                                    <Table.Tr>
-                                        <Table.Th>BIC</Table.Th>
-                                        <Table.Th>Name</Table.Th>
-                                        <Table.Th>Country</Table.Th>
-                                        <Table.Th>Fee</Table.Th>
-                                    </Table.Tr>
-                                </Table.Thead>
-                                <Table.Tbody>
-                                    {psps.map((psp) => (
-                                        <Table.Tr key={psp.bic}>
-                                            <Table.Td><Code>{psp.bic}</Code></Table.Td>
-                                            <Table.Td>{psp.name}</Table.Td>
-                                            <Table.Td><Badge size="sm">{psp.country_code}</Badge></Table.Td>
-                                            <Table.Td>{(psp.fee_percent * 100).toFixed(2)}%</Table.Td>
+                            <Table.ScrollContainer minWidth={500}>
+                                <Table>
+                                    <Table.Thead>
+                                        <Table.Tr>
+                                            <Table.Th>BIC</Table.Th>
+                                            <Table.Th>Name</Table.Th>
+                                            <Table.Th>Country</Table.Th>
+                                            <Table.Th>Fee</Table.Th>
                                         </Table.Tr>
-                                    ))}
-                                </Table.Tbody>
-                            </Table>
+                                    </Table.Thead>
+                                    <Table.Tbody>
+                                        {psps.map((psp) => (
+                                            <Table.Tr key={psp.bic}>
+                                                <Table.Td><Code>{psp.bic}</Code></Table.Td>
+                                                <Table.Td>{psp.name}</Table.Td>
+                                                <Table.Td><Badge size="sm">{psp.country_code}</Badge></Table.Td>
+                                                <Table.Td>{(psp.fee_percent * 100).toFixed(2)}%</Table.Td>
+                                            </Table.Tr>
+                                        ))}
+                                    </Table.Tbody>
+                                </Table>
+                            </Table.ScrollContainer>
                         </Card>
                     </Tabs.Panel>
                 </Tabs>

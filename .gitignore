@@ -111,3 +111,6 @@ server.log
 
 # Replit backup files
 .replit.backup
+
+# Audit artifacts
+.audit/

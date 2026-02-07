@@ -49,6 +49,7 @@ import {
     IconTransform,
     IconCopy,
     IconShieldCheck,
+    IconLock,
 } from "@tabler/icons-react";
 import type { Country, Quote, FeeBreakdown, ProxyResolutionResult, IntermediaryAgentsResponse } from "../types";
 import {
@@ -154,7 +155,7 @@ export function PaymentPage() {
 
 
     // Lifecycle state - using extracted hook
-    const { stepsByPhase, advanceStep, setSteps } = usePaymentLifecycle();
+    const { steps, stepsByPhase, advanceStep, setSteps } = usePaymentLifecycle();
 
     // Loading states
     const [loading, setLoading] = useState({ countries: false, resolve: false, submit: false, qrScan: false });
@@ -529,10 +530,19 @@ export function PaymentPage() {
         setLoading((prev) => ({ ...prev, submit: true }));
 
         try {
-            // Step 14: Construct message
+            // Step 14: Source SAP Reservation (camt.103 CreateReservation)
             advanceStep(14);
+            const sourceCcy = feeBreakdown?.sourceCurrency || "SGD";
+            notifications.show({
+                title: "Source SAP: camt.103 CreateReservation",
+                message: `Reserving ${sourceCcy} ${Number(amount).toLocaleString()} on FXP nostro at Source SAP`,
+                color: "cyan",
+                icon: <IconLock size={16} />,
+                autoClose: 3000,
+            });
+            await new Promise(r => setTimeout(r, 600));
 
-            // Step 15: Submit to IPS
+            // Step 15: Submit pacs.008 to IPS
             advanceStep(15);
 
             // Determine clearing system codes based on source country
@@ -571,17 +581,34 @@ export function PaymentPage() {
 
             const result = await submitPacs008(params);
 
-            // Step 16: Settlement Chain
+            // Step 16: Dest SAP Reservation (camt.103 CreateReservation)
             advanceStep(16);
-            await new Promise(r => setTimeout(r, 800));
+            const destCcy = selectedCountryData?.currencies[0]?.currencyCode || "THB";
+            notifications.show({
+                title: "Dest SAP: camt.103 CreateReservation",
+                message: `Reserving ${destCcy} ${Number(selectedQuote.destinationInterbankAmount).toLocaleString()} on FXP nostro at Dest SAP`,
+                color: "teal",
+                icon: <IconLock size={16} />,
+                autoClose: 3000,
+            });
+            await new Promise(r => setTimeout(r, 600));
 
-            // Step 17: Completion
+            // Step 17: pacs.002 received — Settlement Completion
             advanceStep(17);
-            advanceStep(18); // Checkmark for visual finish
+            advanceStep(18);
+
+            // Reservation outcome: pacs.002 ACCC → UTILIZED (both SAP legs finalize debit)
+            notifications.show({
+                title: "Reservations UTILIZED (pacs.002 ACCC)",
+                message: `Source SAP: ${sourceCcy} debited · Dest SAP: ${destCcy} debited — settlement finalized`,
+                color: "green",
+                icon: <IconCheck size={16} />,
+                autoClose: 4000,
+            });
 
             notifications.show({
                 title: "Payment Successful",
-                message: `Transaction ${result.uetr} completed (ACCC)`,
+                message: `Transaction ${result.uetr} completed (ACCC) — recipient credited`,
                 color: "green",
                 icon: <IconCheck size={16} />
             });
@@ -597,6 +624,15 @@ export function PaymentPage() {
                 ...s,
                 status: s.id === 15 ? 'error' : s.status
             })));
+
+            // Reservation outcome: pacs.002 RJCT → CANCELLED (both SAP legs release funds)
+            notifications.show({
+                title: `Reservations CANCELLED (pacs.002 RJCT)`,
+                message: `SAP reservations released — funds returned to FXP nostro accounts`,
+                color: "orange",
+                icon: <IconLock size={16} />,
+                autoClose: 5000,
+            });
 
             notifications.show({
                 title: `Payment Rejected (${statusCode})`,
@@ -1017,6 +1053,33 @@ export function PaymentPage() {
                                 >
                                     Confirm & Send
                                 </Button>
+
+                                {/* Transaction ID (UETR) with Payment Explorer Link */}
+                                <Card withBorder p="md">
+                                    <Group justify="space-between" mb="xs">
+                                        <Text size="sm" fw={500}>Transaction ID (UETR)</Text>
+                                        {(() => {
+                                            const isComplete = steps.some(s => s.status === 'completed' && s.id >= 17);
+                                            const isError = steps.some(s => s.status === 'error');
+                                            return (
+                                                <Badge color={isComplete ? "green" : isError ? "red" : "blue"} variant="filled">
+                                                    {isComplete ? "ACSC" : isError ? "RJCT" : "PDNG"}
+                                                </Badge>
+                                            );
+                                        })()}
+                                    </Group>
+                                    <Code block style={{ fontSize: '0.85rem', wordBreak: 'break-all' }}>{uetr}</Code>
+                                    <Button
+                                        component="a"
+                                        href={`/explorer?uetr=${uetr}`}
+                                        variant="light"
+                                        size="xs"
+                                        leftSection={<IconInfoCircle size={14} />}
+                                        mt="sm"
+                                    >
+                                        View in Payment Explorer
+                                    </Button>
+                                </Card>
                             </Stack>
                         </Card>
                     </Stack>

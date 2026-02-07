@@ -167,6 +167,60 @@ ON CONFLICT (bic) DO UPDATE SET
     updated_at = CURRENT_TIMESTAMP;
 
 -- =============================================================================
+-- FXP-PSP Relationship Seed Data
+-- =============================================================================
+
+INSERT INTO fxp_psp_relationships (fxp_id, psp_id, tier, improvement_bps)
+SELECT f.fxp_id, p.psp_id, 'PREMIUM', 5
+FROM fxps f, psps p WHERE f.fxp_code = 'FXP-ABC' AND p.bic = 'DBSSSGSG'
+ON CONFLICT (fxp_id, psp_id) DO NOTHING;
+
+INSERT INTO fxp_psp_relationships (fxp_id, psp_id, tier, improvement_bps)
+SELECT f.fxp_id, p.psp_id, 'VOLUME', 3
+FROM fxps f, psps p WHERE f.fxp_code = 'FXP-ABC' AND p.bic = 'KASITHBK'
+ON CONFLICT (fxp_id, psp_id) DO NOTHING;
+
+INSERT INTO fxp_psp_relationships (fxp_id, psp_id, tier, improvement_bps)
+SELECT f.fxp_id, p.psp_id, 'STANDARD', 0
+FROM fxps f, psps p WHERE f.fxp_code = 'FXP-ABC' AND p.bic = 'MABORKKL'
+ON CONFLICT (fxp_id, psp_id) DO NOTHING;
+
+INSERT INTO fxp_psp_relationships (fxp_id, psp_id, tier, improvement_bps)
+SELECT f.fxp_id, p.psp_id, 'PREMIUM', 8
+FROM fxps f, psps p WHERE f.fxp_code = 'FXP-XYZ' AND p.bic = 'OCBCSGSG'
+ON CONFLICT (fxp_id, psp_id) DO NOTHING;
+
+INSERT INTO fxp_psp_relationships (fxp_id, psp_id, tier, improvement_bps)
+SELECT f.fxp_id, p.psp_id, 'VOLUME', 4
+FROM fxps f, psps p WHERE f.fxp_code = 'FXP-XYZ' AND p.bic = 'BABORKKL'
+ON CONFLICT (fxp_id, psp_id) DO NOTHING;
+
+INSERT INTO fxp_psp_relationships (fxp_id, psp_id, tier, improvement_bps)
+SELECT f.fxp_id, p.psp_id, 'STANDARD', 0
+FROM fxps f, psps p WHERE f.fxp_code = 'FXP-XYZ' AND p.bic = 'BMRIIDJA'
+ON CONFLICT (fxp_id, psp_id) DO NOTHING;
+
+INSERT INTO fxp_psp_relationships (fxp_id, psp_id, tier, improvement_bps)
+SELECT f.fxp_id, p.psp_id, 'PREMIUM', 6
+FROM fxps f, psps p WHERE f.fxp_code = 'FXP-GLOBAL' AND p.bic = 'DBSSSGSG'
+ON CONFLICT (fxp_id, psp_id) DO NOTHING;
+
+INSERT INTO fxp_psp_relationships (fxp_id, psp_id, tier, improvement_bps)
+SELECT f.fxp_id, p.psp_id, 'VOLUME', 4
+FROM fxps f, psps p WHERE f.fxp_code = 'FXP-GLOBAL' AND p.bic = 'MABORKKL'
+ON CONFLICT (fxp_id, psp_id) DO NOTHING;
+
+INSERT INTO fxp_psp_relationships (fxp_id, psp_id, tier, improvement_bps)
+SELECT f.fxp_id, p.psp_id, 'PREMIUM', 7
+FROM fxps f, psps p WHERE f.fxp_code = 'FXP-GLOBAL' AND p.bic = 'KASITHBK'
+ON CONFLICT (fxp_id, psp_id) DO NOTHING;
+
+INSERT INTO fxp_psp_relationships (fxp_id, psp_id, tier, improvement_bps)
+SELECT f.fxp_id, p.psp_id, 'STANDARD', 0
+FROM fxps f, psps p WHERE f.fxp_code = 'FXP-GLOBAL' AND p.bic = 'SBININBB'
+ON CONFLICT (fxp_id, psp_id) DO NOTHING;
+
+-- =============================================================================
 -- Comments
 -- =============================================================================
 

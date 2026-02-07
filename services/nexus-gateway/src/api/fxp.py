@@ -464,8 +464,8 @@ async def list_psp_relationships(
     
     return [
         PSPRelationshipResponse(
-            relationship_id=r.relationship_id,
-            fxp_id=r.fxp_id,
+            relationship_id=str(r.relationship_id),
+            fxp_id=str(r.fxp_id),
             psp_bic=r.psp_bic,
             psp_name=r.psp_name,
             tier=r.tier,

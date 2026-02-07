@@ -30,7 +30,7 @@ WINDOW_SECONDS = 60
 
 # Endpoint-specific overrides (path prefix -> requests per minute)
 ENDPOINT_LIMITS: Dict[str, int] = {
-    "/v1/iso20022/pacs008": 30,      # Heavy payment processing
+    "/v1/iso20022/pacs008": 120,     # Payment processing (sandbox-friendly limit)
     "/v1/quotes": 60,                # Quote generation
     "/v1/addressing/resolve": 60,    # Proxy resolution
     "/v1/rates": 120,                # Rate queries (lighter)

@@ -33,6 +33,7 @@ import {
     getFXPTrades,
     getFXPPSPRelationships,
     submitRate,
+    withdrawRate,
     type FXPRate,
     type FXPTrade,
     type PSPRelationship,
@@ -130,6 +131,17 @@ export function FXPPage() {
             setRates(freshRates);
         } catch (err) {
             notifications.show({ title: "Error", message: err instanceof Error ? err.message : "Failed to submit rate", color: "red" });
+        }
+    };
+
+    const handleWithdrawRate = async (rateId: string, corridor: string) => {
+        try {
+            await withdrawRate(rateId);
+            notifications.show({ title: "Rate Withdrawn", message: `${corridor} rate withdrawn successfully`, color: "blue" });
+            const freshRates = await getFXPRates();
+            setRates(freshRates);
+        } catch (err) {
+            notifications.show({ title: "Error", message: err instanceof Error ? err.message : "Failed to withdraw rate", color: "red" });
         }
     };
 
@@ -232,38 +244,46 @@ export function FXPPage() {
                                 Refresh
                             </Button>
                         </Group>
-                        <Table>
-                            <Table.Thead>
-                                <Table.Tr>
-                                    <Table.Th>Corridor</Table.Th>
-                                    <Table.Th>Base Rate</Table.Th>
-                                    <Table.Th>Spread (bps)</Table.Th>
-                                    <Table.Th>Effective</Table.Th>
-                                    <Table.Th>Expires</Table.Th>
-                                    <Table.Th>Status</Table.Th>
-                                </Table.Tr>
-                            </Table.Thead>
-                            <Table.Tbody>
-                                {rates.map((rate) => (
-                                    <Table.Tr key={rate.rateId}>
-                                        <Table.Td><Text fw={500}>{rate.sourceCurrency} → {rate.destinationCurrency}</Text></Table.Td>
-                                        <Table.Td>{parseFloat(rate.baseRate).toFixed(4)}</Table.Td>
-                                        <Table.Td>{rate.spreadBps}</Table.Td>
-                                        <Table.Td fw={600}>{parseFloat(rate.effectiveRate).toFixed(4)}</Table.Td>
-                                        <Table.Td>
-                                            <Group gap="xs">
-                                                <IconClock size={14} />
-                                                {rate.validUntil ? <CountdownText targetDate={rate.validUntil} /> : "—"}
-                                            </Group>
-                                        </Table.Td>
-                                        <Table.Td><Badge color="green" size="sm">{rate.status}</Badge></Table.Td>
+                        <Table.ScrollContainer minWidth={750}>
+                            <Table>
+                                <Table.Thead>
+                                    <Table.Tr>
+                                        <Table.Th>Corridor</Table.Th>
+                                        <Table.Th>Base Rate</Table.Th>
+                                        <Table.Th>Spread (bps)</Table.Th>
+                                        <Table.Th>Effective</Table.Th>
+                                        <Table.Th>Expires</Table.Th>
+                                        <Table.Th>Status</Table.Th>
+                                        <Table.Th>Actions</Table.Th>
                                     </Table.Tr>
-                                ))}
-                                {rates.length === 0 && (
-                                    <Table.Tr><Table.Td colSpan={6}><Text c="dimmed" ta="center" py="md">No active rates</Text></Table.Td></Table.Tr>
-                                )}
-                            </Table.Tbody>
-                        </Table>
+                                </Table.Thead>
+                                <Table.Tbody>
+                                    {rates.map((rate) => (
+                                        <Table.Tr key={rate.rateId}>
+                                            <Table.Td><Text fw={500}>{rate.sourceCurrency} → {rate.destinationCurrency}</Text></Table.Td>
+                                            <Table.Td>{parseFloat(rate.rate).toFixed(4)}</Table.Td>
+                                            <Table.Td>{rate.spreadBps}</Table.Td>
+                                            <Table.Td fw={600}>{parseFloat(rate.effectiveRate).toFixed(4)}</Table.Td>
+                                            <Table.Td>
+                                                <Group gap="xs">
+                                                    <IconClock size={14} />
+                                                    {rate.validUntil ? <CountdownText targetDate={rate.validUntil} /> : "—"}
+                                                </Group>
+                                            </Table.Td>
+                                            <Table.Td><Badge color="green" size="sm">{rate.status}</Badge></Table.Td>
+                                            <Table.Td>
+                                                <Button size="xs" variant="light" color="red" onClick={() => handleWithdrawRate(rate.rateId, `${rate.sourceCurrency} → ${rate.destinationCurrency}`)}>
+                                                    Withdraw
+                                                </Button>
+                                            </Table.Td>
+                                        </Table.Tr>
+                                    ))}
+                                    {rates.length === 0 && (
+                                        <Table.Tr><Table.Td colSpan={7}><Text c="dimmed" ta="center" py="md">No active rates</Text></Table.Td></Table.Tr>
+                                    )}
+                                </Table.Tbody>
+                            </Table>
+                        </Table.ScrollContainer>
                     </Card>
                 </Tabs.Panel>
 
@@ -350,31 +370,33 @@ export function FXPPage() {
                 <Tabs.Panel value="trades" pt="md">
                     <Card>
                         <Title order={5} mb="md">Trade Execution History</Title>
-                        <Table>
-                            <Table.Thead>
-                                <Table.Tr>
-                                    <Table.Th>Corridor</Table.Th>
-                                    <Table.Th>Amount</Table.Th>
-                                    <Table.Th>Rate</Table.Th>
-                                    <Table.Th>UETR</Table.Th>
-                                    <Table.Th>Timestamp</Table.Th>
-                                </Table.Tr>
-                            </Table.Thead>
-                            <Table.Tbody>
-                                {trades.map((trade) => (
-                                    <Table.Tr key={trade.tradeId}>
-                                        <Table.Td fw={500}>{trade.sourceCurrency} → {trade.destinationCurrency}</Table.Td>
-                                        <Table.Td>{parseFloat(trade.amount).toFixed(4)}</Table.Td>
-                                        <Table.Td>{parseFloat(trade.rate).toFixed(4)}</Table.Td>
-                                        <Table.Td><Text size="xs" ff="monospace">{trade.uetr?.substring(0, 12)}...</Text></Table.Td>
-                                        <Table.Td><Text size="xs">{new Date(trade.timestamp).toLocaleString()}</Text></Table.Td>
+                        <Table.ScrollContainer minWidth={600}>
+                            <Table>
+                                <Table.Thead>
+                                    <Table.Tr>
+                                        <Table.Th>Corridor</Table.Th>
+                                        <Table.Th>Amount</Table.Th>
+                                        <Table.Th>Rate</Table.Th>
+                                        <Table.Th>UETR</Table.Th>
+                                        <Table.Th>Timestamp</Table.Th>
                                     </Table.Tr>
-                                ))}
-                                {trades.length === 0 && (
-                                    <Table.Tr><Table.Td colSpan={5}><Text c="dimmed" ta="center" py="md">No trades yet</Text></Table.Td></Table.Tr>
-                                )}
-                            </Table.Tbody>
-                        </Table>
+                                </Table.Thead>
+                                <Table.Tbody>
+                                    {trades.map((trade) => (
+                                        <Table.Tr key={trade.tradeId}>
+                                            <Table.Td fw={500}>{trade.sourceCurrency} → {trade.destinationCurrency}</Table.Td>
+                                            <Table.Td>{parseFloat(trade.amount).toFixed(4)}</Table.Td>
+                                            <Table.Td>{parseFloat(trade.rate).toFixed(4)}</Table.Td>
+                                            <Table.Td><Text size="xs" ff="monospace">{trade.uetr?.substring(0, 12)}...</Text></Table.Td>
+                                            <Table.Td><Text size="xs">{new Date(trade.timestamp).toLocaleString()}</Text></Table.Td>
+                                        </Table.Tr>
+                                    ))}
+                                    {trades.length === 0 && (
+                                        <Table.Tr><Table.Td colSpan={5}><Text c="dimmed" ta="center" py="md">No trades yet</Text></Table.Td></Table.Tr>
+                                    )}
+                                </Table.Tbody>
+                            </Table>
+                        </Table.ScrollContainer>
                     </Card>
                 </Tabs.Panel>
 
@@ -384,37 +406,39 @@ export function FXPPage() {
                         <Text c="dimmed" size="sm" mb="md">
                             Rate improvements for specific PSP partnerships, loaded from backend.
                         </Text>
-                        <Table>
-                            <Table.Thead>
-                                <Table.Tr>
-                                    <Table.Th>PSP</Table.Th>
-                                    <Table.Th>BIC</Table.Th>
-                                    <Table.Th>Tier</Table.Th>
-                                    <Table.Th>Improvement</Table.Th>
-                                </Table.Tr>
-                            </Table.Thead>
-                            <Table.Tbody>
-                                {pspRelationships.map((rel) => (
-                                    <Table.Tr key={rel.pspBic}>
-                                        <Table.Td fw={500}>{rel.pspName}</Table.Td>
-                                        <Table.Td><Text size="xs" ff="monospace">{rel.pspBic}</Text></Table.Td>
-                                        <Table.Td>
-                                            <Badge color={rel.tier === "PREMIUM" ? "blue" : rel.tier === "VOLUME" ? "violet" : "gray"}>
-                                                {rel.tier}
-                                            </Badge>
-                                        </Table.Td>
-                                        <Table.Td>
-                                            <Text c={rel.improvementBps > 0 ? "green" : "dimmed"} fw={500}>
-                                                +{rel.improvementBps} bps
-                                            </Text>
-                                        </Table.Td>
+                        <Table.ScrollContainer minWidth={500}>
+                            <Table>
+                                <Table.Thead>
+                                    <Table.Tr>
+                                        <Table.Th>PSP</Table.Th>
+                                        <Table.Th>BIC</Table.Th>
+                                        <Table.Th>Tier</Table.Th>
+                                        <Table.Th>Improvement</Table.Th>
                                     </Table.Tr>
-                                ))}
-                                {pspRelationships.length === 0 && (
-                                    <Table.Tr><Table.Td colSpan={4}><Text c="dimmed" ta="center" py="md">No PSP relationships configured</Text></Table.Td></Table.Tr>
-                                )}
-                            </Table.Tbody>
-                        </Table>
+                                </Table.Thead>
+                                <Table.Tbody>
+                                    {pspRelationships.map((rel) => (
+                                        <Table.Tr key={rel.pspBic}>
+                                            <Table.Td fw={500}>{rel.pspName}</Table.Td>
+                                            <Table.Td><Text size="xs" ff="monospace">{rel.pspBic}</Text></Table.Td>
+                                            <Table.Td>
+                                                <Badge color={rel.tier === "PREMIUM" ? "blue" : rel.tier === "VOLUME" ? "violet" : "gray"}>
+                                                    {rel.tier}
+                                                </Badge>
+                                            </Table.Td>
+                                            <Table.Td>
+                                                <Text c={rel.improvementBps > 0 ? "green" : "dimmed"} fw={500}>
+                                                    +{rel.improvementBps} bps
+                                                </Text>
+                                            </Table.Td>
+                                        </Table.Tr>
+                                    ))}
+                                    {pspRelationships.length === 0 && (
+                                        <Table.Tr><Table.Td colSpan={4}><Text c="dimmed" ta="center" py="md">No PSP relationships configured</Text></Table.Td></Table.Tr>
+                                    )}
+                                </Table.Tbody>
+                            </Table>
+                        </Table.ScrollContainer>
                     </Card>
                 </Tabs.Panel>
 
@@ -424,36 +448,38 @@ export function FXPPage() {
                         <Text c="dimmed" size="sm" mb="md">
                             Configure rate improvements based on transaction volume. Higher amounts get better rates.
                         </Text>
-                        <Table>
-                            <Table.Thead>
-                                <Table.Tr>
-                                    <Table.Th>Amount Range</Table.Th>
-                                    <Table.Th>Tier</Table.Th>
-                                    <Table.Th>Improvement</Table.Th>
-                                </Table.Tr>
-                            </Table.Thead>
-                            <Table.Tbody>
-                                {amountTiers.map((tier) => (
-                                    <Table.Tr key={tier.tierId}>
-                                        <Table.Td>
-                                            <Text size="sm">
-                                                {tier.minAmount.toLocaleString()} - {tier.maxAmount ? tier.maxAmount.toLocaleString() : "∞"}
-                                            </Text>
-                                        </Table.Td>
-                                        <Table.Td>
-                                            <Badge color={tier.improvementBps > 0 ? "green" : "gray"}>
-                                                {tier.label}
-                                            </Badge>
-                                        </Table.Td>
-                                        <Table.Td>
-                                            <Text c={tier.improvementBps > 0 ? "green" : "dimmed"} fw={500}>
-                                                +{tier.improvementBps} bps
-                                            </Text>
-                                        </Table.Td>
+                        <Table.ScrollContainer minWidth={500}>
+                            <Table>
+                                <Table.Thead>
+                                    <Table.Tr>
+                                        <Table.Th>Amount Range</Table.Th>
+                                        <Table.Th>Tier</Table.Th>
+                                        <Table.Th>Improvement</Table.Th>
                                     </Table.Tr>
-                                ))}
-                            </Table.Tbody>
-                        </Table>
+                                </Table.Thead>
+                                <Table.Tbody>
+                                    {amountTiers.map((tier) => (
+                                        <Table.Tr key={tier.tierId}>
+                                            <Table.Td>
+                                                <Text size="sm">
+                                                    {tier.minAmount.toLocaleString()} - {tier.maxAmount ? tier.maxAmount.toLocaleString() : "∞"}
+                                                </Text>
+                                            </Table.Td>
+                                            <Table.Td>
+                                                <Badge color={tier.improvementBps > 0 ? "green" : "gray"}>
+                                                    {tier.label}
+                                                </Badge>
+                                            </Table.Td>
+                                            <Table.Td>
+                                                <Text c={tier.improvementBps > 0 ? "green" : "dimmed"} fw={500}>
+                                                    +{tier.improvementBps} bps
+                                                </Text>
+                                            </Table.Td>
+                                        </Table.Tr>
+                                    ))}
+                                </Table.Tbody>
+                            </Table>
+                        </Table.ScrollContainer>
                         <Group mt="md">
                             <NumberInput label="Min Amount" size="xs" value={newTier.minAmount} onChange={(v) => setNewTier({ ...newTier, minAmount: Number(v) })} style={{ flex: 1 }} />
                             <NumberInput label="Max Amount" size="xs" value={newTier.maxAmount} onChange={(v) => setNewTier({ ...newTier, maxAmount: Number(v) })} style={{ flex: 1 }} />

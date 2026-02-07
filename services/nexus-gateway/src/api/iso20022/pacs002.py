@@ -23,6 +23,7 @@ import json
 from ...db import get_db
 from ...config import settings
 from .. import validation as xsd_validation
+from .utils import store_payment_event
 
 router = APIRouter(tags=["ISO 20022 Messages"])
 
@@ -108,6 +109,67 @@ async def receive_pacs002(
         status=request.transactionStatus.value,
         reason_code=request.statusReasonCode.value if request.statusReasonCode else None
     )
+    
+    # Step 18: Settle or cancel reservation based on pacs.002 outcome
+    # Per Nexus docs:
+    #   ACCC → SAPs finalize debit on FXP account (reservation UTILIZED)
+    #   RJCT → D-IPS reverses settlement, D-SAP releases reservation (CANCELLED)
+    # Ref: https://docs.nexusglobalpayments.org/payment-processing/payment-flow-happy-path
+    if request.transactionStatus in (TransactionStatus.ACCC,):
+        from ..sap import settle_reservation_for_payment
+        settled = await settle_reservation_for_payment(db=db, uetr=request.uetr)
+        if settled:
+            # Store RESERVATION_UTILIZED events for both SAP legs
+            await store_payment_event(
+                db=db,
+                uetr=request.uetr,
+                event_type="RESERVATION_UTILIZED",
+                actor="S-SAP",
+                data={
+                    "leg": "SOURCE",
+                    "trigger": "pacs.002 ACCC",
+                    "message": "Source SAP reservation UTILIZED — FXP source-currency nostro debited (settlement finalized)",
+                }
+            )
+            await store_payment_event(
+                db=db,
+                uetr=request.uetr,
+                event_type="RESERVATION_UTILIZED",
+                actor="D-SAP",
+                data={
+                    "leg": "DESTINATION",
+                    "trigger": "pacs.002 ACCC",
+                    "message": "Dest SAP reservation UTILIZED — FXP dest-currency nostro debited (settlement finalized)",
+                }
+            )
+    elif request.transactionStatus == TransactionStatus.RJCT:
+        from ..sap import cancel_reservation_for_payment
+        cancelled = await cancel_reservation_for_payment(db=db, uetr=request.uetr)
+        if cancelled:
+            reason = request.statusReasonCode.value if request.statusReasonCode else "RJCT"
+            # Per Nexus docs: D-IPS reverses settlement, D-SAP releases reservation
+            await store_payment_event(
+                db=db,
+                uetr=request.uetr,
+                event_type="RESERVATION_CANCELLED",
+                actor="S-SAP",
+                data={
+                    "leg": "SOURCE",
+                    "trigger": f"pacs.002 RJCT ({reason})",
+                    "message": f"Source SAP reservation CANCELLED — source-currency funds released back to FXP nostro",
+                }
+            )
+            await store_payment_event(
+                db=db,
+                uetr=request.uetr,
+                event_type="RESERVATION_CANCELLED",
+                actor="D-SAP",
+                data={
+                    "leg": "DESTINATION",
+                    "trigger": f"pacs.002 RJCT ({reason})",
+                    "message": f"Dest SAP reservation CANCELLED — dest-currency funds released back to FXP nostro",
+                }
+            )
     
     # Determine message based on status
     messages = {
@@ -228,6 +290,14 @@ async def receive_pacs002_xml(
         reason_code=reason_code,
         reason_text=None
     )
+    
+    # Settle or cancel reservation based on final status
+    if status == TransactionStatus.ACCC:
+        from ..sap import settle_reservation_for_payment
+        await settle_reservation_for_payment(db=db, uetr=uetr)
+    elif status == TransactionStatus.RJCT:
+        from ..sap import cancel_reservation_for_payment
+        await cancel_reservation_for_payment(db=db, uetr=uetr)
     
     return Pacs002Response(
         uetr=uetr,

@@ -85,6 +85,18 @@ const MESSAGE_METADATA: Record<string, {
         color: "cyan",
         description: "Reconciliation report for SAPs and FXPs",
     },
+    "camt.103": {
+        displayName: "Create Reservation",
+        step: 10,
+        color: "teal",
+        description: "SAP reservation request — locks FXP nostro funds (Method 2a)",
+    },
+    "camt.104": {
+        displayName: "Create Reservation Response",
+        step: 11,
+        color: "teal",
+        description: "SAP reservation confirmation — funds locked",
+    },
     "camt.056": {
         displayName: "FI to FI Payment Cancellation Request",
         step: 0,
@@ -180,7 +192,7 @@ function formatXml(xml: string): string {
  * 
  * Uses placeholder tokens to prevent regex from matching inserted HTML spans
  */
-function XmlHighlighter({ xml }: { xml: string }) {
+export function XmlHighlighter({ xml }: { xml: string }) {
     const formatted = formatXml(xml);
 
     // Use unique placeholders that won't be matched by subsequent regex
@@ -389,6 +401,13 @@ export function MessageInspector({
         )
     );
 
+    // Sort by Nexus step order for correct timeline display
+    const sortedMessages = [...dedupedMessages].sort((a, b) => {
+        const stepA = MESSAGE_METADATA[a.messageType]?.step ?? 99;
+        const stepB = MESSAGE_METADATA[b.messageType]?.step ?? 99;
+        return stepA - stepB;
+    });
+
     return (
         <Card shadow="sm" padding="lg" radius="md" withBorder>
             <Group justify="space-between" mb="md">
@@ -402,7 +421,7 @@ export function MessageInspector({
                     </div>
                 </Group>
                 <Badge size="lg" variant="light">
-                    {messages.length} message{messages.length !== 1 ? "s" : ""}
+                    {dedupedMessages.length} message{dedupedMessages.length !== 1 ? "s" : ""}
                 </Badge>
             </Group>
 
@@ -426,8 +445,8 @@ export function MessageInspector({
 
             <Divider mb="md" />
 
-            <Timeline active={dedupedMessages.length - 1} bulletSize={24} lineWidth={2}>
-                {dedupedMessages.map((message, index) => {
+            <Timeline active={sortedMessages.length - 1} bulletSize={24} lineWidth={2}>
+                {sortedMessages.map((message, index) => {
                     const meta = MESSAGE_METADATA[message.messageType] || {
                         displayName: message.messageType,
                         step: 0,

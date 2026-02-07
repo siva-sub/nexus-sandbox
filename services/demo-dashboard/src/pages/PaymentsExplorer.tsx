@@ -37,6 +37,8 @@ import {
     CopyButton,
     Tooltip,
     Accordion,
+    Collapse,
+    ScrollArea,
 } from "@mantine/core";
 import {
     IconSearch,
@@ -52,12 +54,15 @@ import {
     IconCircle,
     IconCircleX,
     IconClipboardList,
+    IconChevronDown,
+    IconChevronUp,
+    IconCode,
 } from "@tabler/icons-react";
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { MessageInspector } from "../components/MessageInspector";
+import { MessageInspector, XmlHighlighter } from "../components/MessageInspector";
 import { DevDebugPanel } from "../components/DevDebugPanel";
-import { getPaymentStatus, getPaymentMessages } from "../services/api";
+import { getPaymentStatus, getPaymentMessages, getPaymentEvents } from "../services/api";
 
 // 17-step lifecycle phases (matching LifecycleAccordion from Payment page)
 const EXPLORER_LIFECYCLE_PHASES = [
@@ -96,16 +101,16 @@ const EXPLORER_LIFECYCLE_PHASES = [
         steps: [
             { id: 12, name: "Debtor Authorization", apiCall: "Bank Auth", isoMessage: "-" },
             { id: 13, name: "Get Intermediaries", apiCall: "GET /intermediary-agents", isoMessage: "-" },
-            { id: 14, name: "Construct pacs.008", apiCall: "Message Build", isoMessage: "pacs.008" },
-            { id: 15, name: "Submit to IPS", apiCall: "POST /iso20022/pacs008", isoMessage: "pacs.008" },
-            { id: 16, name: "Settlement Chain", apiCall: "Nexus → Dest IPS → SAP", isoMessage: "-" },
+            { id: 14, name: "Source SAP Reservation", apiCall: "camt.103 → Source SAP locks FXP source-currency nostro", isoMessage: "camt.103" },
+            { id: 15, name: "Submit pacs.008 to IPS", apiCall: "POST /iso20022/pacs008", isoMessage: "pacs.008" },
+            { id: 16, name: "Dest SAP Reservation", apiCall: "camt.103 → Dest SAP locks FXP dest-currency nostro", isoMessage: "camt.103" },
         ],
     },
     {
         phase: 5,
-        name: "Completion",
+        name: "Completion & Reservation Outcome",
         steps: [
-            { id: 17, name: "Accept & Notify", apiCall: "Response Processing", isoMessage: "pacs.002" },
+            { id: 17, name: "pacs.002 → Settle or Release", apiCall: "ACCC: reservations UTILIZED (debit finalized) · RJCT: reservations CANCELLED (funds released)", isoMessage: "pacs.002" },
         ],
     },
 ];
@@ -200,12 +205,176 @@ interface Message {
     description?: string;
 }
 
+interface EventDetail {
+    event_id: string;
+    uetr: string;
+    event_type: string;
+    actor: string;
+    data: {
+        step?: number;
+        leg?: string;
+        message?: string;
+        isoMessage?: string;
+        trigger?: string;
+        sapBic?: string;
+        fxpId?: string;
+        currency?: string;
+        amount?: string;
+        [key: string]: unknown;
+    };
+    occurred_at: string;
+    // XML message columns from payment_events table
+    pacs008_message?: string | null;
+    pacs002_message?: string | null;
+    camt103_message?: string | null;
+    camt054_message?: string | null;
+    acmt023_message?: string | null;
+    acmt024_message?: string | null;
+    pain001_message?: string | null;
+    pacs004_message?: string | null;
+    pacs028_message?: string | null;
+    camt056_message?: string | null;
+    camt029_message?: string | null;
+}
+
+/** Map XML column names to their ISO message type labels */
+const XML_COLUMN_LABELS: Record<string, string> = {
+    pacs008_message: "pacs.008",
+    pacs002_message: "pacs.002",
+    camt103_message: "camt.103",
+    camt054_message: "camt.054",
+    acmt023_message: "acmt.023",
+    acmt024_message: "acmt.024",
+    pain001_message: "pain.001",
+    pacs004_message: "pacs.004",
+    pacs028_message: "pacs.028",
+    camt056_message: "camt.056",
+    camt029_message: "camt.029",
+};
+
+/** Extract non-null XML messages from an event */
+function getEventXmlMessages(evt: EventDetail): { label: string; xml: string }[] {
+    const result: { label: string; xml: string }[] = [];
+    for (const [col, label] of Object.entries(XML_COLUMN_LABELS)) {
+        const xml = (evt as unknown as Record<string, unknown>)[col];
+        if (xml && typeof xml === "string") {
+            result.push({ label, xml });
+        }
+    }
+    return result;
+}
+
+const ACTOR_COLORS: Record<string, string> = {
+    "S-PSP": "blue", "S-IPS": "cyan", "S-SAP": "teal",
+    "D-SAP": "orange", "D-IPS": "grape", "D-PSP": "pink",
+    "NEXUS": "indigo", "FXP": "violet",
+};
+
+/** Single actor event item with optional expandable XML */
+function ActorEventItem({ evt }: { evt: EventDetail }) {
+    const [xmlExpanded, setXmlExpanded] = useState<string | null>(null);
+    const knownActor = Object.keys(ACTOR_COLORS).find(k => evt.actor?.includes(k));
+    const color = knownActor ? ACTOR_COLORS[knownActor] : (ACTOR_COLORS[evt.actor] || "gray");
+    const isUtilized = evt.event_type === "RESERVATION_UTILIZED";
+    const isCancelled = evt.event_type === "RESERVATION_CANCELLED";
+    const xmlMessages = getEventXmlMessages(evt);
+
+    return (
+        <Timeline.Item
+            key={evt.event_id}
+            bullet={isUtilized ? <IconCheck size={12} /> : isCancelled ? <IconCircleX size={12} /> : <IconCircleDot size={12} />}
+            color={isCancelled ? "red" : isUtilized ? "green" : color}
+            title={
+                <Group gap="xs" align="center">
+                    <Badge size="xs" color={color} variant="filled">{evt.actor}</Badge>
+                    <Text size="sm" fw={600}>{evt.event_type}</Text>
+                    {evt.data?.isoMessage && (
+                        <Badge size="xs" variant="outline">{evt.data.isoMessage}</Badge>
+                    )}
+                    {evt.data?.leg && (
+                        <Badge size="xs" variant="light" color="gray">{evt.data.leg}</Badge>
+                    )}
+                </Group>
+            }
+        >
+            {evt.data?.message && (
+                <Text size="xs" c="dimmed" mt={2}>{evt.data.message}</Text>
+            )}
+            {evt.data?.trigger && (
+                <Text size="xs" c="dimmed" fs="italic">Trigger: {evt.data.trigger}</Text>
+            )}
+            {evt.data?.currency && evt.data?.amount && (
+                <Text size="xs" fw={500} mt={2}>
+                    {evt.data.currency} {Number(evt.data.amount).toLocaleString()}
+                    {evt.data.sapBic ? ` @ ${evt.data.sapBic}` : ""}
+                </Text>
+            )}
+            <Text size="xs" c="dimmed" mt={4}>
+                {evt.occurred_at ? new Date(evt.occurred_at).toLocaleString() : ""}
+            </Text>
+
+            {/* XML viewer buttons */}
+            {xmlMessages.length > 0 && (
+                <Group gap="xs" mt={6}>
+                    {xmlMessages.map(({ label }) => (
+                        <Button
+                            key={label}
+                            size="compact-xs"
+                            variant={xmlExpanded === label ? "filled" : "light"}
+                            color="violet"
+                            leftSection={<IconCode size={12} />}
+                            rightSection={xmlExpanded === label ? <IconChevronUp size={10} /> : <IconChevronDown size={10} />}
+                            onClick={() => setXmlExpanded(xmlExpanded === label ? null : label)}
+                        >
+                            {label}
+                        </Button>
+                    ))}
+                </Group>
+            )}
+
+            {/* Expanded XML content */}
+            {xmlMessages.map(({ label, xml }) => (
+                <Collapse key={label} in={xmlExpanded === label}>
+                    <Card shadow="xs" p="xs" mt="xs" radius="sm" withBorder style={{ backgroundColor: "#1E1E1E" }}>
+                        <Group justify="space-between" mb={4}>
+                            <Badge size="xs" color="violet">{label}</Badge>
+                            <CopyButton value={xml}>
+                                {({ copied, copy }) => (
+                                    <Tooltip label={copied ? "Copied!" : "Copy XML"}>
+                                        <ActionIcon size="xs" variant="subtle" onClick={copy} color={copied ? "teal" : "gray"}>
+                                            {copied ? <IconCheck size={12} /> : <IconCopy size={12} />}
+                                        </ActionIcon>
+                                    </Tooltip>
+                                )}
+                            </CopyButton>
+                        </Group>
+                        <ScrollArea h={250}>
+                            <XmlHighlighter xml={xml} />
+                        </ScrollArea>
+                    </Card>
+                </Collapse>
+            ))}
+        </Timeline.Item>
+    );
+}
+
+function ActorEventTimeline({ events }: { events: EventDetail[] }) {
+    return (
+        <Timeline active={events.length - 1} bulletSize={24} lineWidth={2}>
+            {events.map((evt, i) => (
+                <ActorEventItem key={evt.event_id || i} evt={evt} />
+            ))}
+        </Timeline>
+    );
+}
+
 export function PaymentsExplorer() {
     const [searchParams] = useSearchParams();
     const [uetrInput, setUetrInput] = useState("");
     const [loading, setLoading] = useState(false);
     const [payment, setPayment] = useState<PaymentDetails | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
+    const [events, setEvents] = useState<EventDetail[]>([]);
     const [error, setError] = useState<string | null>(null);
 
     // Handle URL query param for direct linking from demo
@@ -223,6 +392,7 @@ export function PaymentsExplorer() {
         setError(null);
         setPayment(null);
         setMessages([]);
+        setEvents([]);
 
         try {
             // Fetch payment status using mock-enabled API
@@ -239,6 +409,15 @@ export function PaymentsExplorer() {
             // Fetch messages using mock-enabled API
             const msgData = await getPaymentMessages(uetr);
             setMessages((msgData.messages || []) as Message[]);
+
+            // Fetch events (actor trail) from backend DB
+            try {
+                const evtData = await getPaymentEvents(uetr);
+                setEvents((evtData.events || []) as unknown as EventDetail[]);
+            } catch {
+                // Events are optional — don't fail the whole search
+                setEvents([]);
+            }
         } catch (err) {
             setError(`Failed to fetch payment: ${err}`);
         } finally {
@@ -321,7 +500,10 @@ export function PaymentsExplorer() {
                                 Lifecycle
                             </Tabs.Tab>
                             <Tabs.Tab value="messages" leftSection={<IconFileCode size={16} />}>
-                                Messages
+                                Messages ({messages.filter((msg, idx, arr) => idx === arr.findIndex(m => m.messageType === msg.messageType && m.direction === msg.direction && m.xml === msg.xml)).length})
+                            </Tabs.Tab>
+                            <Tabs.Tab value="events" leftSection={<IconTimeline size={16} />}>
+                                Actor Events ({events.length})
                             </Tabs.Tab>
                             <Tabs.Tab value="debug" leftSection={<IconBuilding size={16} />}>
                                 Debug Panel
@@ -531,6 +713,24 @@ export function PaymentsExplorer() {
                                 messages={messages}
                                 loading={false}
                             />
+                        </Tabs.Panel>
+
+                        {/* Actor Events Tab — real events from backend DB */}
+                        <Tabs.Panel value="events">
+                            <Card shadow="sm" padding="lg" radius="md" withBorder>
+                                <Group gap="xs" mb="md">
+                                    <IconTimeline size={20} color="var(--mantine-color-nexusPurple-filled)" />
+                                    <Title order={5}>Nexus Actor Event Trail</Title>
+                                    <Badge size="sm" variant="light">{events.length} events</Badge>
+                                </Group>
+                                {events.length === 0 ? (
+                                    <Text c="dimmed" ta="center" py="xl">
+                                        No events recorded. Submit a payment to see the full actor trail.
+                                    </Text>
+                                ) : (
+                                    <ActorEventTimeline events={events} />
+                                )}
+                            </Card>
                         </Tabs.Panel>
 
                         {/* Debug Tab */}

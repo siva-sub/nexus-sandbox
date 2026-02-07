@@ -421,33 +421,35 @@ export function MessagesPage() {
           <SimpleGrid cols={{ base: 1, md: 2 }}>
             <Card withBorder>
               <Title order={5} mb="sm">Recent Transactions</Title>
-              <Table verticalSpacing="sm">
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>UETR / Time</Table.Th>
-                    <Table.Th>Status</Table.Th>
-                    <Table.Th></Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {livePayments.map((p) => (
-                    <Table.Tr key={p.uetr} bg={selectedUetr === p.uetr ? "var(--mantine-color-blue-light)" : undefined}>
-                      <Table.Td>
-                        <Text size="xs" ff="monospace" truncate>{p.uetr}</Text>
-                        <Text size="xs" c="dimmed">{new Date(p.initiated_at || p.createdAt).toLocaleString()}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Badge size="xs" color={p.status === "ACSP" ? "green" : "blue"}>{p.status}</Badge>
-                      </Table.Td>
-                      <Table.Td>
-                        <Button size="compact-xs" variant="subtle" onClick={() => fetchEvents(p.uetr)}>
-                          Inspect
-                        </Button>
-                      </Table.Td>
+              <Table.ScrollContainer minWidth={450}>
+                <Table verticalSpacing="sm">
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>UETR / Time</Table.Th>
+                      <Table.Th>Status</Table.Th>
+                      <Table.Th></Table.Th>
                     </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {livePayments.map((p) => (
+                      <Table.Tr key={p.uetr} bg={selectedUetr === p.uetr ? "var(--mantine-color-blue-light)" : undefined}>
+                        <Table.Td>
+                          <Text size="xs" ff="monospace" truncate>{p.uetr}</Text>
+                          <Text size="xs" c="dimmed">{new Date(p.initiated_at || p.createdAt).toLocaleString()}</Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Badge size="xs" color={p.status === "ACSP" ? "green" : "blue"}>{p.status}</Badge>
+                        </Table.Td>
+                        <Table.Td>
+                          <Button size="compact-xs" variant="subtle" onClick={() => fetchEvents(p.uetr)}>
+                            Inspect
+                          </Button>
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
             </Card>
 
             <Stack gap="md">

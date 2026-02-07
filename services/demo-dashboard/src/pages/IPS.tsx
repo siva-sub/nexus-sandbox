@@ -172,24 +172,26 @@ export function IPSPage() {
                         {membersLoading ? (
                             <Loader size="sm" />
                         ) : members.length > 0 ? (
-                            <Table>
-                                <Table.Thead>
-                                    <Table.Tr>
-                                        <Table.Th>BIC</Table.Th>
-                                        <Table.Th>Name</Table.Th>
-                                        <Table.Th>Status</Table.Th>
-                                    </Table.Tr>
-                                </Table.Thead>
-                                <Table.Tbody>
-                                    {members.map((m) => (
-                                        <Table.Tr key={m.bic}>
-                                            <Table.Td><Code>{m.bic}</Code></Table.Td>
-                                            <Table.Td>{m.name}</Table.Td>
-                                            <Table.Td><Badge color="green" size="sm">Active</Badge></Table.Td>
+                            <Table.ScrollContainer minWidth={400}>
+                                <Table>
+                                    <Table.Thead>
+                                        <Table.Tr>
+                                            <Table.Th>BIC</Table.Th>
+                                            <Table.Th>Name</Table.Th>
+                                            <Table.Th>Status</Table.Th>
                                         </Table.Tr>
-                                    ))}
-                                </Table.Tbody>
-                            </Table>
+                                    </Table.Thead>
+                                    <Table.Tbody>
+                                        {members.map((m) => (
+                                            <Table.Tr key={m.bic}>
+                                                <Table.Td><Code>{m.bic}</Code></Table.Td>
+                                                <Table.Td>{m.name}</Table.Td>
+                                                <Table.Td><Badge color="green" size="sm">Active</Badge></Table.Td>
+                                            </Table.Tr>
+                                        ))}
+                                    </Table.Tbody>
+                                </Table>
+                            </Table.ScrollContainer>
                         ) : (
                             <Text c="dimmed">No PSPs found for this IPS</Text>
                         )}
@@ -204,28 +206,30 @@ export function IPSPage() {
             {/* All IPS Table */}
             <Card>
                 <Title order={5} mb="md">All IPS Operators ({operators.length})</Title>
-                <Table>
-                    <Table.Thead>
-                        <Table.Tr>
-                            <Table.Th>Name</Table.Th>
-                            <Table.Th>Country</Table.Th>
-                            <Table.Th>Clearing System ID</Table.Th>
-                            <Table.Th>Currency</Table.Th>
-                            <Table.Th>Max Amount</Table.Th>
-                        </Table.Tr>
-                    </Table.Thead>
-                    <Table.Tbody>
-                        {operators.map((op) => (
-                            <Table.Tr key={op.clearing_system_id}>
-                                <Table.Td>{op.name}</Table.Td>
-                                <Table.Td><Badge size="sm">{op.country_code}</Badge></Table.Td>
-                                <Table.Td><Code>{op.clearing_system_id}</Code></Table.Td>
-                                <Table.Td>{op.currency_code}</Table.Td>
-                                <Table.Td>{formatAmount(op.max_amount, op.currency_code)}</Table.Td>
+                <Table.ScrollContainer minWidth={600}>
+                    <Table>
+                        <Table.Thead>
+                            <Table.Tr>
+                                <Table.Th>Name</Table.Th>
+                                <Table.Th>Country</Table.Th>
+                                <Table.Th>Clearing System ID</Table.Th>
+                                <Table.Th>Currency</Table.Th>
+                                <Table.Th>Max Amount</Table.Th>
                             </Table.Tr>
-                        ))}
-                    </Table.Tbody>
-                </Table>
+                        </Table.Thead>
+                        <Table.Tbody>
+                            {operators.map((op) => (
+                                <Table.Tr key={op.clearing_system_id}>
+                                    <Table.Td>{op.name}</Table.Td>
+                                    <Table.Td><Badge size="sm">{op.country_code}</Badge></Table.Td>
+                                    <Table.Td><Code>{op.clearing_system_id}</Code></Table.Td>
+                                    <Table.Td>{op.currency_code}</Table.Td>
+                                    <Table.Td>{formatAmount(op.max_amount, op.currency_code)}</Table.Td>
+                                </Table.Tr>
+                            ))}
+                        </Table.Tbody>
+                    </Table>
+                </Table.ScrollContainer>
             </Card>
 
             {/* Developer Debug Panel for IPS Actor */}

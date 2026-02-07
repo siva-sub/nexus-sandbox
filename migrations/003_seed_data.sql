@@ -276,6 +276,48 @@ UNION ALL
 SELECT fxp_id, 'INR', 'SGD', 0.016, NOW(), NOW() + INTERVAL '100 years' FROM fxps WHERE fxp_code = 'FXP-ABC';
 
 -- =============================================================================
+-- FXP RATES (for FXP Dashboard - submitted rates with spread)
+-- These populate the FXP dashboard's Active Rates view
+-- =============================================================================
+
+INSERT INTO fxp_rates (fxp_id, source_currency, destination_currency, base_rate, spread_bps, effective_rate, valid_until, status)
+SELECT fxp_id, source_currency, destination_currency, base_rate,
+    CASE
+        WHEN fxp_code = 'FXP-ABC' THEN 50
+        WHEN fxp_code = 'FXP-XYZ' THEN 45
+        WHEN fxp_code = 'FXP-GLOBAL' THEN 55
+    END as spread_bps,
+    base_rate * (1 - CASE
+        WHEN fxp_code = 'FXP-ABC' THEN 0.0050
+        WHEN fxp_code = 'FXP-XYZ' THEN 0.0045
+        WHEN fxp_code = 'FXP-GLOBAL' THEN 0.0055
+    END) as effective_rate,
+    NOW() + INTERVAL '100 years',
+    'ACTIVE'
+FROM fx_rates
+JOIN fxps USING (fxp_id);
+
+-- =============================================================================
+-- SAP RESERVATIONS (Demo data for SAP Dashboard liquidity utilization)
+-- =============================================================================
+
+INSERT INTO sap_reservations (account_id, amount, uetr, status, reserved_at, expires_at)
+SELECT
+    a.account_id,
+    CASE
+        WHEN row_number() OVER () % 3 = 0 THEN 25000.00
+        WHEN row_number() OVER () % 3 = 1 THEN 15000.00
+        ELSE 35000.00
+    END,
+    uuid_generate_v4(),
+    'ACTIVE',
+    NOW() - (random() * INTERVAL '2 hours'),
+    NOW() + INTERVAL '10 minutes' + (random() * INTERVAL '50 minutes')
+FROM fxp_sap_accounts a
+WHERE a.currency_code IN ('SGD', 'THB', 'MYR')
+LIMIT 8;
+
+-- =============================================================================
 -- PROXY REGISTRATIONS (Demo data for PDO)
 -- Reference: https://docs.nexusglobalpayments.org/addressing-and-proxy-resolution/proxy-and-account-resolution-process
 -- =============================================================================

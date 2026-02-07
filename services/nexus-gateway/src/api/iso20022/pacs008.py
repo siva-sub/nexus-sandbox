@@ -289,7 +289,7 @@ async def validate_pacs008(parsed: dict, db: AsyncSession) -> PaymentValidationR
         quote_query = text("""
             SELECT 
                 q.quote_id, q.final_rate as exchange_rate, q.expires_at,
-                q.fxp_id,
+                q.fxp_id, q.source_currency, q.destination_currency,
                 source_sap.bic as source_sap_bic,
                 dest_sap.bic as dest_sap_bic,
                 ips.clearing_system_id as dest_ips_code
@@ -413,11 +413,13 @@ async def validate_pacs008(parsed: dict, db: AsyncSession) -> PaymentValidationR
         statusCode="ACCC" if len(errors) == 0 else "RJCT",
         statusReasonCode=status_reason,
         quote_data={
+            "fxp_id": str(quote.fxp_id),
+            "source_sap_bic": quote.source_sap_bic,
             "dest_sap_bic": quote.dest_sap_bic,
             "dest_psp_bic": parsed.get("creditorAgentBic"),
             "dest_amount": Decimal(str(parsed.get("instructedAmount"))) if parsed.get("instructedAmount") else Decimal("0"),
-            "dest_currency": parsed.get("instructedCurrency"),
-            "source_currency": parsed.get("settlementCurrency"),
+            "dest_currency": quote.destination_currency or parsed.get("instructedCurrency"),
+            "source_currency": quote.source_currency or parsed.get("settlementCurrency"),
             "dest_ips_code": quote.dest_ips_code
         } if quote else None
     )
@@ -677,6 +679,9 @@ async def process_pacs008(
         )
     
     # Demo Scenario Injection
+    # Per Nexus spec: rejected payments still go through the reservation lifecycle.
+    # The IPS creates a reservation at the SAP, then cancels it upon rejection.
+    # This ensures CANCELLED reservations appear in SAP dashboard Reservation History.
     if scenario_code and scenario_code.lower() != "happy":
         scenario_reason = scenario_code.upper()
         scenario_descriptions = {
@@ -693,6 +698,7 @@ async def process_pacs008(
         
         uetr = parsed.get("uetr") or str(uuid4())
         
+        # Step 1: Store payment as RJCT
         await store_payment(
             db=db,
             uetr=uetr,
@@ -710,6 +716,89 @@ async def process_pacs008(
             status="RJCT"
         )
         
+        # Step 2: Validate to get quote_data (SAP/FXP info) for reservation
+        # Even though we're rejecting, we need this data to create the reservation
+        demo_validation = await validate_pacs008(parsed, db)
+        
+        # Step 3: Create reservation at SAP then immediately cancel it
+        # Per Nexus spec: "In case of a reject, the IPS will release the reservation
+        # on the settlement and confirm the reject to the Source PSP."
+        demo_reservation_id = None
+        if demo_validation.quote_data and demo_validation.quote_data.get("fxp_id"):
+            from ..sap import create_reservation_for_payment, cancel_reservation_for_payment
+            
+            dest_sap = demo_validation.quote_data.get("dest_sap_bic", "")
+            dest_currency = demo_validation.quote_data.get("dest_currency") or parsed.get("settlementCurrency", "USD")
+            dest_amount = demo_validation.quote_data.get("dest_amount") or parsed.get("instructedAmount") or parsed.get("settlementAmount") or "0"
+            fxp_id = demo_validation.quote_data.get("fxp_id", "")
+            
+            # camt.103 CreateReservation → SAP locks FXP nostro funds
+            demo_reservation_id = await create_reservation_for_payment(
+                db=db,
+                fxp_id=fxp_id,
+                dest_sap_bic=dest_sap,
+                currency=dest_currency,
+                amount=dest_amount,
+                uetr=uetr,
+            )
+            
+            if demo_reservation_id:
+                # Record reservation creation event
+                camt103_xml = (
+                    f'<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.103.001.02">'
+                    f'<CreateRsvatn>'
+                    f'<MsgId>{uetr}-DSAP</MsgId>'
+                    f'<RsvatnId><Id>{demo_reservation_id}</Id></RsvatnId>'
+                    f'<Amt Ccy="{dest_currency}">{dest_amount}</Amt>'
+                    f'<AcctOwnr><FinInstnId><BICFI>{dest_sap}</BICFI></FinInstnId></AcctOwnr>'
+                    f'<StsRsn>SAP reservation for payment (will be cancelled due to {scenario_reason})</StsRsn>'
+                    f'</CreateRsvatn></Document>'
+                )
+                
+                await store_payment_event(
+                    db=db,
+                    uetr=uetr,
+                    event_type="RESERVATION_CREATED",
+                    actor="D-SAP",
+                    data={
+                        "step": 4,
+                        "leg": "DESTINATION",
+                        "reservationId": demo_reservation_id,
+                        "sapBic": dest_sap,
+                        "fxpId": fxp_id,
+                        "currency": dest_currency,
+                        "amount": str(dest_amount),
+                        "isoMessage": "camt.103",
+                        "message": f"camt.103 CreateReservation → SAP ({dest_sap}) locks {dest_currency} {dest_amount}",
+                    },
+                    camt103_xml=camt103_xml
+                )
+                
+                # Now cancel the reservation (ACTIVE → CANCELLED)
+                cancelled = await cancel_reservation_for_payment(db=db, uetr=uetr)
+                
+                await store_payment_event(
+                    db=db,
+                    uetr=uetr,
+                    event_type="RESERVATION_CANCELLED",
+                    actor="D-SAP",
+                    data={
+                        "step": 5,
+                        "leg": "DESTINATION",
+                        "reservationId": demo_reservation_id,
+                        "sapBic": dest_sap,
+                        "fxpId": fxp_id,
+                        "currency": dest_currency,
+                        "amount": str(dest_amount),
+                        "isoMessage": "pacs.002",
+                        "reason": scenario_reason,
+                        "cancelled": cancelled,
+                        "message": f"Reservation CANCELLED — funds released at SAP ({dest_sap}) due to {scenario_reason}: {reason_desc}",
+                    }
+                )
+                
+                logger.info(f"Demo rejection: reservation {demo_reservation_id} created then cancelled for UETR {uetr}")
+        
         pacs002_xml = build_pacs002_rejection(
             uetr=uetr,
             status_code="RJCT",
@@ -725,6 +814,7 @@ async def process_pacs008(
             data={
                 "scenarioCode": scenario_reason,
                 "description": reason_desc,
+                "reservationId": demo_reservation_id,
                 "demoMode": True
             },
             pacs008_xml=xml_content,
@@ -757,6 +847,7 @@ async def process_pacs008(
                 "status": "RJCT",
                 "statusReasonCode": scenario_reason,
                 "errors": [reason_desc],
+                "reservationCancelled": demo_reservation_id is not None,
                 "demoScenario": True,
                 "reference": "https://docs.nexusglobalpayments.org/payment-processing/validations-duplicates-and-fraud"
             }
@@ -851,6 +942,144 @@ async def process_pacs008(
         status="ACSC"
     )
     
+    # ==========================================================================
+    # Full Nexus Actor Event Chain (per Nexus docs)
+    # Ref: https://docs.nexusglobalpayments.org/payment-processing/payment-flow-happy-path
+    # ==========================================================================
+    debtor_bic = parsed.get("debtorAgentBic", "")
+    creditor_bic = parsed.get("creditorAgentBic", "")
+    
+    # Event 1: Source PSP — debit/reserve sender's account
+    await store_payment_event(
+        db=db,
+        uetr=validation.uetr,
+        event_type="PAYMENT_INITIATED",
+        actor=debtor_bic or "S-PSP",
+        data={
+            "step": 1,
+            "message": f"Source PSP ({debtor_bic}) debits/reserves sender's account",
+            "debtorName": parsed.get("debtorName", "Unknown"),
+            "amount": str(parsed.get("settlementAmount", "0")),
+            "currency": parsed.get("settlementCurrency", "USD"),
+        }
+    )
+    
+    # Event 2: Source IPS — ensures settlement certainty (reservation or prefund)
+    await store_payment_event(
+        db=db,
+        uetr=validation.uetr,
+        event_type="SOURCE_IPS_SETTLEMENT",
+        actor="S-IPS",
+        data={
+            "step": 2,
+            "message": "Source IPS ensures settlement certainty (funds reservation on S-PSP prefund)",
+        }
+    )
+    
+    # Event 3–4: Source SAP + camt.103 CreateReservation — lock source-currency FXP nostro
+    # Event 5–6: Dest SAP + camt.103 CreateReservation — lock dest-currency FXP nostro
+    # Reference: https://docs.nexusglobalpayments.org/settlement-access-provision/liquidity
+    reservation_id = None
+    if validation.quote_data and validation.quote_data.get("fxp_id"):
+        from ..sap import create_reservation_for_payment
+        
+        source_sap_bic = validation.quote_data.get("source_sap_bic", "")
+        source_currency_val = validation.quote_data.get("source_currency") or parsed.get("settlementCurrency", "USD")
+        source_amount_val = parsed.get("settlementAmount") or "0"
+        fxp_id = validation.quote_data.get("fxp_id", "")
+        
+        # Build camt.103 XML for Source SAP
+        source_camt103_xml = (
+            f'<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.103.001.02">'
+            f'<CreateRsvatn>'
+            f'<MsgId>{validation.uetr}-SSAP</MsgId>'
+            f'<RsvatnId><Id>{validation.uetr}-SSAP-RES</Id></RsvatnId>'
+            f'<Amt Ccy="{source_currency_val}">{source_amount_val}</Amt>'
+            f'<AcctOwnr><FinInstnId><BICFI>{source_sap_bic}</BICFI></FinInstnId></AcctOwnr>'
+            f'<StsRsn>Source SAP: FXP nostro reservation for Nexus settlement</StsRsn>'
+            f'</CreateRsvatn></Document>'
+        )
+        
+        # Event 3: Source SAP validates FXP and locks source-currency funds
+        await store_payment_event(
+            db=db,
+            uetr=validation.uetr,
+            event_type="RESERVATION_CREATED",
+            actor="S-SAP",
+            data={
+                "step": 3,
+                "leg": "SOURCE",
+                "sapBic": source_sap_bic,
+                "fxpId": fxp_id,
+                "currency": source_currency_val,
+                "amount": str(source_amount_val),
+                "isoMessage": "camt.103",
+                "expiresInSeconds": 300,
+                "message": f"camt.103 CreateReservation → Source SAP ({source_sap_bic}) locks {source_currency_val} {source_amount_val} on FXP nostro"
+            },
+            camt103_xml=source_camt103_xml
+        )
+        
+        # Dest leg
+        dest_amount = validation.quote_data.get("dest_amount") or parsed.get("instructedAmount") or parsed.get("settlementAmount") or "0"
+        dest_currency = validation.quote_data.get("dest_currency") or parsed.get("settlementCurrency", "USD")
+        dest_sap = validation.quote_data.get("dest_sap_bic", "")
+        
+        # Build camt.103 XML for Dest SAP
+        dest_camt103_xml = (
+            f'<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.103.001.02">'
+            f'<CreateRsvatn>'
+            f'<MsgId>{validation.uetr}-DSAP</MsgId>'
+            f'<RsvatnId><Id>{validation.uetr}-DSAP-RES</Id></RsvatnId>'
+            f'<Amt Ccy="{dest_currency}">{dest_amount}</Amt>'
+            f'<AcctOwnr><FinInstnId><BICFI>{dest_sap}</BICFI></FinInstnId></AcctOwnr>'
+            f'<StsRsn>Dest SAP: FXP nostro reservation for Nexus settlement</StsRsn>'
+            f'</CreateRsvatn></Document>'
+        )
+        
+        reservation_id = await create_reservation_for_payment(
+            db=db,
+            fxp_id=validation.quote_data["fxp_id"],
+            dest_sap_bic=dest_sap,
+            currency=dest_currency,
+            amount=dest_amount,
+            uetr=validation.uetr,
+        )
+        
+        if reservation_id:
+            # Event 4: Dest SAP validates FXP and locks dest-currency funds
+            await store_payment_event(
+                db=db,
+                uetr=validation.uetr,
+                event_type="RESERVATION_CREATED",
+                actor="D-SAP",
+                data={
+                    "step": 4,
+                    "leg": "DESTINATION",
+                    "reservationId": reservation_id,
+                    "sapBic": dest_sap,
+                    "fxpId": fxp_id,
+                    "currency": dest_currency,
+                    "amount": str(dest_amount),
+                    "isoMessage": "camt.103",
+                    "expiresInSeconds": 300,
+                    "message": f"camt.103 CreateReservation → Dest SAP ({dest_sap}) locks {dest_currency} {dest_amount} on FXP nostro"
+                },
+                camt103_xml=dest_camt103_xml
+            )
+        else:
+            await store_payment_event(
+                db=db,
+                uetr=validation.uetr,
+                event_type="RESERVATION_SKIPPED",
+                actor="NEXUS",
+                data={
+                    "reason": "No matching FXP nostro account at Dest SAP (sandbox graceful fallback)",
+                    "sapBic": dest_sap,
+                    "fxpId": validation.quote_data["fxp_id"]
+                }
+            )
+    
     # Check for NexusOrgnlUETR
     original_uetr = None
     remittance_info = parsed.get("remittanceInfo", "")
@@ -901,22 +1130,117 @@ async def process_pacs008(
         creditor_name=parsed.get("creditorName", "Demo Recipient")
     )
     
+    # Event 5: Nexus Gateway forwards pacs.008 to Dest IPS
     await store_payment_event(
         db=db,
         uetr=validation.uetr,
-        event_type="PAYMENT_ACCEPTED",
+        event_type="PACS008_FORWARDED",
         actor="NEXUS",
         data={
+            "step": 5,
             "quoteId": validation.quoteId,
-            "transformedXml": transformed_xml[:500],
-            "routingTo": "DEST_IPS",
+            "routingTo": "D-IPS",
+            "isoMessage": "pacs.008",
+            "message": "Nexus Gateway forwards transformed pacs.008 to Destination IPS",
             "reconciliationGenerated": True
         },
         pacs008_xml=xml_content,
         pacs002_xml=pacs002_xml,
         camt054_xml=camt054_xml
     )
+    
+    # Event 6: Dest IPS forwards to Dest PSP
+    await store_payment_event(
+        db=db,
+        uetr=validation.uetr,
+        event_type="DEST_IPS_FORWARDED",
+        actor="D-IPS",
+        data={
+            "step": 6,
+            "message": f"Dest IPS forwards payment to Dest PSP ({creditor_bic}) for crediting",
+            "destPspBic": creditor_bic,
+        }
+    )
+    
+    # Event 7: Dest PSP credits recipient
+    await store_payment_event(
+        db=db,
+        uetr=validation.uetr,
+        event_type="RECIPIENT_CREDITED",
+        actor=creditor_bic or "D-PSP",
+        data={
+            "step": 7,
+            "message": f"Dest PSP ({creditor_bic}) credits recipient account",
+            "creditorName": parsed.get("creditorName", "Unknown"),
+        }
+    )
+    
+    # Event 8: pacs.002 ACCC — settlement confirmed
+    await store_payment_event(
+        db=db,
+        uetr=validation.uetr,
+        event_type="PACS002_RECEIVED",
+        actor="NEXUS",
+        data={
+            "step": 8,
+            "isoMessage": "pacs.002",
+            "status": "ACCC",
+            "message": "pacs.002 ACCC received — settlement confirmed",
+        },
+        pacs002_xml=pacs002_xml
+    )
 
+    # Event 9-10: Settlement — reservations UTILIZED
+    # Destination leg: debit dest-currency nostro
+    # Source leg: credit source-currency nostro
+    from ..sap import settle_reservation_for_payment
+    
+    source_sap_bic_settle = None
+    source_currency_settle = None
+    source_amount_settle = None
+    fxp_id_settle = None
+    if validation.quote_data:
+        source_sap_bic_settle = validation.quote_data.get("source_sap_bic")
+        source_currency_settle = validation.quote_data.get("source_currency") or parsed.get("settlementCurrency")
+        source_amount_settle = parsed.get("settlementAmount")
+        fxp_id_settle = validation.quote_data.get("fxp_id")
+    
+    settled = await settle_reservation_for_payment(
+        db=db,
+        uetr=validation.uetr,
+        source_sap_bic=source_sap_bic_settle,
+        source_currency=source_currency_settle,
+        source_amount=source_amount_settle,
+        fxp_id=fxp_id_settle,
+    )
+    if settled:
+        # Event 9: Source SAP reservation UTILIZED
+        await store_payment_event(
+            db=db,
+            uetr=validation.uetr,
+            event_type="RESERVATION_UTILIZED",
+            actor="S-SAP",
+            data={
+                "step": 9,
+                "leg": "SOURCE",
+                "trigger": "pacs.002 ACCC",
+                "message": f"Source SAP reservation UTILIZED — FXP source-currency nostro debited (settlement finalized)",
+                "sourceLeg": f"{source_amount_settle} {source_currency_settle} at {source_sap_bic_settle}" if source_sap_bic_settle else None,
+            }
+        )
+        # Event 10: Dest SAP reservation UTILIZED
+        await store_payment_event(
+            db=db,
+            uetr=validation.uetr,
+            event_type="RESERVATION_UTILIZED",
+            actor="D-SAP",
+            data={
+                "step": 10,
+                "leg": "DESTINATION",
+                "trigger": "pacs.002 ACCC",
+                "message": "Dest SAP reservation UTILIZED — FXP dest-currency nostro debited (settlement finalized)",
+            }
+        )
     # Trigger callback delivery for accepted payment
     # This implements the callback mechanism per Nexus specification
     if pacs002_endpoint:
