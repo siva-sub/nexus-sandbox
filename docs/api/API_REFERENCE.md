@@ -6,16 +6,64 @@
 
 > **Note**: This sandbox implementation currently operates without authentication for development convenience.
 
+## ⚠️ Important: Sandbox vs Official Nexus
+
+This documentation covers **two different environments**:
+
+1. **This Sandbox** (local development): `http://localhost:8000/v1`
+   - Runs on your local machine via Docker
+   - No authentication required
+   - For development and testing only
+
+2. **Official Nexus Global Payments** (production): `https://api.nexusglobalpayments.org/v1`
+   - The real Nexus platform operated by founding central banks
+   - Requires OAuth 2.0 authentication
+   - For production integrations
+
+The URLs shown below reference the **official Nexus platform**. When using this sandbox locally, replace with `http://localhost:8000/v1`.
+
 ## Base URLs
 
-| Environment | URL |
-|-------------|-----|
-| **Production** | `https://api.nexusglobalpayments.org/v1` |
-| **Sandbox** | `https://sandbox.nexusglobalpayments.org/v1` |
+| Environment | URL | Notes |
+|-------------|-----|-------|
+| **This Sandbox (Local)** | `http://localhost:8000/v1` | Use this for local development |
+| **Official Production** | `https://api.nexusglobalpayments.org/v1` | Real Nexus platform |
+| **Official Sandbox** | `https://sandbox.nexusglobalpayments.org/v1` | Official test environment |
 
 ## Authentication
 
-All API requests require OAuth 2.0 Bearer tokens:
+### Official Nexus Platform (Production)
+
+All API requests to the official Nexus platform require OAuth 2.0 Bearer tokens:
+
+```bash
+curl -X POST https://auth.nexusglobalpayments.org/oauth/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=client_credentials" \
+  -d "client_id=YOUR_CLIENT_ID" \
+  -d "client_secret=YOUR_CLIENT_SECRET" \
+  -d "scope=quotes:read payments:submit proxy:resolve"
+```
+
+**Response:**
+```json
+{
+  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "scope": "quotes:read payments:submit proxy:resolve"
+}
+```
+
+### This Sandbox (Local Development)
+
+This sandbox runs **without authentication** for development convenience. Simply make requests directly:
+
+```bash
+curl http://localhost:8000/v1/countries
+```
+
+> **Note**: While the code includes OAuth infrastructure (client credentials, token endpoints), authentication is bypassed in sandbox mode.
 
 ```bash
 curl -X POST https://auth.nexusglobalpayments.org/oauth/token \
