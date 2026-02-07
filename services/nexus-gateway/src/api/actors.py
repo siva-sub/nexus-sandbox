@@ -2,22 +2,27 @@
 Actors API - Plug-and-Play Participant Registry
 
 Reference: Nexus Global Payments Sandbox - Actor Integration
-Reference: NotebookLM 2026-02-03 - Actor Connectivity Models
+Reference: https://docs.nexusglobalpayments.org/apis/actors
 
 This module provides a registry for sandbox participants to register their
 callback URLs for real-time ISO 20022 message routing.
 
 Actors:
 - FXP: Foreign Exchange Provider (Direct to Nexus)
-- IPS: Instant Payment System Operator (Direct to Nexus)
+- IPSO: Instant Payment System Operator (Direct to Nexus)
 - PSP: Payment Service Provider (Indirect via IPS)
 - SAP: Settlement Access Provider (Indirect via IPS)
 - PDO: Proxy Directory Operator (Indirect via IPS)
 
-Assumption A25: Actors can self-register their callback_url for sandbox testing.
-Assumption A26: BIC is used as the unique identifier for actors.
+Changes:
+- Migrated from in-memory registry to PostgreSQL (2026-02-07)
+- Added per-actor callback secrets
+- Changed IPS to IPSO per Nexus specification
 """
 
+import os
+import secrets
+import logging
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field, HttpUrl
 from typing import Optional, Literal
@@ -29,6 +34,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..db import get_db
 from .callbacks import test_callback_endpoint
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/v1/actors", tags=["Actor Registry"])
 
 from .schemas import ActorRegistration, Actor, ActorsListResponse
@@ -37,11 +44,16 @@ from .schemas import ActorRegistration, Actor, ActorsListResponse
 # Models
 # =============================================================================
 
-ActorType = Literal["FXP", "IPS", "PSP", "SAP", "PDO"]
+ActorType = Literal["FXP", "IPSO", "PSP", "SAP", "PDO"]
 
 # =============================================================================
-# BIC Validation
+# Helper Functions
 # =============================================================================
+
+def generate_callback_secret() -> str:
+    """Generate a secure random callback secret for HMAC signing."""
+    return secrets.token_hex(32)
+
 
 def validate_bic(bic: str) -> bool:
     """
@@ -103,75 +115,43 @@ class CallbackTestResponse(BaseModel):
     class Config:
         populate_by_name = True
 
-# =============================================================================
-# In-Memory Registry (Sandbox Simplification)
-# =============================================================================
-# Assumption A27: Sandbox uses in-memory registry for actor data.
-# Production would use a persistent database table.
 
-_actor_registry: dict[str, dict] = {
-    # Pre-seeded actors for sandbox
-    "DBSSSGSG": {
-        "actorId": "actor-dbs-sg",
-        "bic": "DBSSSGSG",
-        "actorType": "PSP",
-        "name": "DBS Bank Singapore",
-        "countryCode": "SG",
-        "callbackUrl": None,
-        "registeredAt": "2026-01-01T00:00:00.000Z",
-        "status": "ACTIVE"
-    },
-    "KASITHBK": {
-        "actorId": "actor-kasikorn-bank",
-        "bic": "KASITHBK",
-        "actorType": "PSP",
-        "name": "Kasikorn Bank Thailand",
-        "countryCode": "TH",
-        "callbackUrl": None,
-        "registeredAt": "2026-01-01T00:00:00.000Z",
-        "status": "ACTIVE"
-    },
-    "MABORKKL": {
-        "actorId": "actor-maybank-my",
-        "bic": "MABORKKL",
-        "actorType": "PSP",
-        "name": "Maybank Malaysia",
-        "countryCode": "MY",
-        "callbackUrl": None,
-        "registeredAt": "2026-01-01T00:00:00.000Z",
-        "status": "ACTIVE"
-    },
-    "FXP-ABC": {
-        "actorId": "actor-fxp-alpha",
-        "bic": "FXP-ABC",
-        "actorType": "FXP",
-        "name": "ABC Currency Exchange",
-        "countryCode": "SG",
-        "callbackUrl": None,
-        "registeredAt": "2026-01-01T00:00:00.000Z",
-        "status": "ACTIVE"
-    },
-    "SGIPSOPS": {
-        "actorId": "actor-sg-ips",
-        "bic": "SGIPSOPS",
-        "actorType": "IPS",
-        "name": "Singapore FAST IPS",
-        "countryCode": "SG",
-        "callbackUrl": None,
-        "registeredAt": "2026-01-01T00:00:00.000Z",
-        "status": "ACTIVE"
-    },
-    "THIPSOPS": {
-        "actorId": "actor-th-ips",
-        "bic": "THIPSOPS",
-        "actorType": "IPS",
-        "name": "Thailand PromptPay IPS",
-        "countryCode": "TH",
-        "callbackUrl": None,
-        "registeredAt": "2026-01-01T00:00:00.000Z",
-        "status": "ACTIVE"
-    },
-}
+# =============================================================================
+# Database Operations
+# =============================================================================
+
+async def _get_actor_by_bic(db: AsyncSession, bic: str) -> Optional[dict]:
+    """Get actor from database by BIC."""
+    query = text("""
+        SELECT actor_id, bic, actor_type, name, country_code, 
+               callback_url, callback_secret, supported_currencies, status, registered_at
+        FROM actors
+        WHERE bic = :bic
+    """)
+    result = await db.execute(query, {"bic": bic.upper()})
+    row = result.fetchone()
+    if row:
+        return {
+            "actorId": row.actor_id,
+            "bic": row.bic,
+            "actorType": row.actor_type,
+            "name": row.name,
+            "countryCode": row.country_code,
+            "callbackUrl": row.callback_url,
+            "callbackSecret": row.callback_secret,
+            "supportedCurrencies": row.supported_currencies or [],
+            "status": row.status,
+            "registeredAt": row.registered_at.isoformat() if row.registered_at else None
+        }
+    return None
+
+
+async def _actor_exists(db: AsyncSession, bic: str) -> bool:
+    """Check if an actor with the given BIC exists."""
+    query = text("SELECT 1 FROM actors WHERE bic = :bic")
+    result = await db.execute(query, {"bic": bic.upper()})
+    return result.fetchone() is not None
+
 
 # =============================================================================
 # Endpoints
@@ -182,17 +162,23 @@ _actor_registry: dict[str, dict] = {
     response_model=Actor,
     summary="Register a new actor for sandbox testing",
     description="""
-    Register a sandbox participant (FXP, IPS, PSP, SAP, or PDO) with an optional
+    Register a sandbox participant (FXP, IPSO, PSP, SAP, or PDO) with an optional
     callback URL for receiving ISO 20022 messages.
     
-    **Direct Participants (FXP, IPS):** Will receive messages directly from Nexus.
+    **Direct Participants (FXP, IPSO):** Will receive messages directly from Nexus.
     **Indirect Participants (PSP, SAP, PDO):** Should configure their domestic IPS
     callback for realistic testing.
     
     **BIC Validation:** BIC must be 8 or 11 characters in ISO 9362 format.
+    
+    **Callback Secret:** If not provided, a secure random secret will be generated
+    automatically for HMAC signature verification.
     """,
 )
-async def register_actor(request: ActorRegistration):
+async def register_actor(
+    request: ActorRegistration,
+    db: AsyncSession = Depends(get_db)
+):
     """Register a new actor in the sandbox."""
     # Validate BIC format
     if not validate_bic(request.bic):
@@ -203,11 +189,12 @@ async def register_actor(request: ActorRegistration):
     
     bic_upper = request.bic.upper().strip()
     
-    if bic_upper in _actor_registry:
+    # Check if actor already exists
+    if await _actor_exists(db, bic_upper):
         raise HTTPException(status_code=409, detail=f"Actor with BIC {request.bic} already exists")
     
-    # Validate actor type
-    valid_types = ["FXP", "IPS", "PSP", "SAP", "PDO"]
+    # Validate actor type (now includes IPSO instead of IPS)
+    valid_types = ["FXP", "IPSO", "PSP", "SAP", "PDO"]
     if request.actor_type.upper() not in valid_types:
         raise HTTPException(
             status_code=400,
@@ -215,23 +202,52 @@ async def register_actor(request: ActorRegistration):
         )
     
     actor_id = f"actor-{uuid.uuid4().hex[:8]}"
-    registered_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    registered_at = datetime.now(timezone.utc)
     
-    actor_data = {
-        "actorId": actor_id,
+    # Generate or use provided callback secret
+    callback_secret = None
+    if hasattr(request, 'callback_secret') and request.callback_secret:
+        callback_secret = request.callback_secret
+    else:
+        callback_secret = generate_callback_secret()
+    
+    # Insert into database
+    insert_query = text("""
+        INSERT INTO actors (
+            actor_id, bic, actor_type, name, country_code, 
+            callback_url, callback_secret, supported_currencies, status, registered_at
+        ) VALUES (
+            :actor_id, :bic, :actor_type, :name, :country_code,
+            :callback_url, :callback_secret, :supported_currencies, 'ACTIVE', :registered_at
+        )
+    """)
+    
+    await db.execute(insert_query, {
+        "actor_id": actor_id,
         "bic": bic_upper,
-        "actorType": request.actor_type.upper(),
+        "actor_type": request.actor_type.upper(),
         "name": request.name,
-        "countryCode": request.country_code.upper(),
-        "callbackUrl": str(request.callback_url) if request.callback_url else None,
-        "registeredAt": registered_at,
-        "status": "ACTIVE",
-        "supportedCurrencies": request.supported_currencies if request.supported_currencies else []
-    }
+        "country_code": request.country_code.upper(),
+        "callback_url": str(request.callback_url) if request.callback_url else None,
+        "callback_secret": callback_secret,
+        "supported_currencies": request.supported_currencies if request.supported_currencies else [],
+        "registered_at": registered_at
+    })
+    await db.commit()
     
-    _actor_registry[bic_upper] = actor_data
+    logger.info(f"Actor registered: {bic_upper} ({request.actor_type.upper()})")
     
-    return Actor(**actor_data)
+    return Actor(
+        actorId=actor_id,
+        bic=bic_upper,
+        actorType=request.actor_type.upper(),
+        name=request.name,
+        countryCode=request.country_code.upper(),
+        callbackUrl=str(request.callback_url) if request.callback_url else None,
+        supportedCurrencies=request.supported_currencies if request.supported_currencies else [],
+        status="ACTIVE",
+        registeredAt=registered_at.isoformat().replace("+00:00", "Z")
+    )
 
 
 @router.get(
@@ -240,17 +256,42 @@ async def register_actor(request: ActorRegistration):
     summary="List all registered actors",
     description="Retrieve a list of all sandbox participants.",
 )
-async def list_actors(actor_type: Optional[ActorType] = None, country_code: Optional[str] = None):
+async def list_actors(
+    actor_type: Optional[ActorType] = None, 
+    country_code: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
     """List registered actors with optional filtering."""
-    actors = list(_actor_registry.values())
     
-    if actor_type:
-        actors = [a for a in actors if a["actorType"] == actor_type]
-    if country_code:
-        actors = [a for a in actors if a["countryCode"] == country_code.upper()]
+    query = text("""
+        SELECT actor_id, bic, actor_type, name, country_code, 
+               callback_url, supported_currencies, status, registered_at
+        FROM actors
+        WHERE (:actor_type IS NULL OR actor_type = :actor_type)
+        AND (:country_code IS NULL OR country_code = :country_code)
+        ORDER BY registered_at DESC
+    """)
     
-    actor_list = [Actor(**a) for a in actors]
-    return {"actors": actor_list, "total": len(actor_list)}
+    result = await db.execute(query, {
+        "actor_type": actor_type.upper() if actor_type else None,
+        "country_code": country_code.upper() if country_code else None
+    })
+    
+    actors = []
+    for row in result.fetchall():
+        actors.append(Actor(
+            actorId=row.actor_id,
+            bic=row.bic,
+            actorType=row.actor_type,
+            name=row.name,
+            countryCode=row.country_code,
+            callbackUrl=row.callback_url,
+            supportedCurrencies=row.supported_currencies or [],
+            status=row.status,
+            registeredAt=row.registered_at.isoformat().replace("+00:00", "Z") if row.registered_at else None
+        ))
+    
+    return {"actors": actors, "total": len(actors)}
 
 
 @router.get(
@@ -259,9 +300,9 @@ async def list_actors(actor_type: Optional[ActorType] = None, country_code: Opti
     summary="Get actor by BIC",
     description="Retrieve details of a specific actor by their BIC code.",
 )
-async def get_actor(bic: str):
+async def get_actor(bic: str, db: AsyncSession = Depends(get_db)):
     """Get a specific actor by BIC."""
-    actor = _actor_registry.get(bic.upper())
+    actor = await _get_actor_by_bic(db, bic)
     if not actor:
         raise HTTPException(status_code=404, detail=f"Actor with BIC {bic} not found")
     return Actor(**actor)
@@ -273,13 +314,31 @@ async def get_actor(bic: str):
     summary="Update actor callback URL",
     description="Update the callback URL for an existing actor.",
 )
-async def update_callback(bic: str, callback_url: Optional[HttpUrl] = None):
+async def update_callback(
+    bic: str, 
+    callback_url: Optional[HttpUrl] = None,
+    db: AsyncSession = Depends(get_db)
+):
     """Update the callback URL for an actor."""
-    actor = _actor_registry.get(bic.upper())
-    if not actor:
+    # Check if actor exists
+    if not await _actor_exists(db, bic):
         raise HTTPException(status_code=404, detail=f"Actor with BIC {bic} not found")
     
-    actor["callbackUrl"] = str(callback_url) if callback_url else None
+    # Update callback URL
+    update_query = text("""
+        UPDATE actors 
+        SET callback_url = :callback_url, updated_at = CURRENT_TIMESTAMP
+        WHERE bic = :bic
+    """)
+    
+    await db.execute(update_query, {
+        "bic": bic.upper(),
+        "callback_url": str(callback_url) if callback_url else None
+    })
+    await db.commit()
+    
+    # Return updated actor
+    actor = await _get_actor_by_bic(db, bic)
     return Actor(**actor)
 
 
@@ -288,12 +347,19 @@ async def update_callback(bic: str, callback_url: Optional[HttpUrl] = None):
     summary="Deregister an actor",
     description="Remove an actor from the sandbox registry.",
 )
-async def deregister_actor(bic: str):
+async def deregister_actor(bic: str, db: AsyncSession = Depends(get_db)):
     """Remove an actor from the registry."""
-    if bic.upper() not in _actor_registry:
+    # Check if actor exists
+    if not await _actor_exists(db, bic):
         raise HTTPException(status_code=404, detail=f"Actor with BIC {bic} not found")
     
-    del _actor_registry[bic.upper()]
+    # Delete actor
+    delete_query = text("DELETE FROM actors WHERE bic = :bic")
+    await db.execute(delete_query, {"bic": bic.upper()})
+    await db.commit()
+    
+    logger.info(f"Actor deregistered: {bic.upper()}")
+    
     return {"message": f"Actor {bic} deregistered successfully"}
 
 
@@ -312,9 +378,9 @@ async def deregister_actor(bic: str):
     Returns detailed diagnostic information about the test result.
     """,
 )
-async def test_actor_callback(bic: str):
+async def test_actor_callback(bic: str, db: AsyncSession = Depends(get_db)):
     """Test the callback endpoint for a registered actor."""
-    actor = _actor_registry.get(bic.upper())
+    actor = await _get_actor_by_bic(db, bic)
     if not actor:
         raise HTTPException(status_code=404, detail=f"Actor with BIC {bic} not found")
     
@@ -325,8 +391,11 @@ async def test_actor_callback(bic: str):
             detail=f"Actor {bic} has no callback URL configured"
         )
     
-    # Run the test
-    result = await test_callback_endpoint(callback_url)
+    # Get actor's callback secret for HMAC
+    callback_secret = actor.get("callbackSecret")
+    
+    # Run the test with actor's secret
+    result = await test_callback_endpoint(callback_url, callback_secret)
     
     return CallbackTestResponse(
         success=result["success"],
@@ -338,3 +407,65 @@ async def test_actor_callback(bic: str):
         error_type=result.get("errorType"),
         message="Callback test successful" if result["success"] else "Callback test failed"
     )
+
+
+@router.get(
+    "/{bic}/callback-secret",
+    summary="Get callback secret",
+    description="""
+    Retrieve the callback secret for an actor.
+    
+    **Security Note:** This endpoint should be protected in production.
+    The callback secret is used for HMAC signature verification on callbacks.
+    """,
+)
+async def get_callback_secret(bic: str, db: AsyncSession = Depends(get_db)):
+    """Get the callback secret for an actor (for HMAC verification)."""
+    query = text("SELECT callback_secret FROM actors WHERE bic = :bic")
+    result = await db.execute(query, {"bic": bic.upper()})
+    row = result.fetchone()
+    
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Actor with BIC {bic} not found")
+    
+    return {
+        "bic": bic.upper(),
+        "callbackSecret": row.callback_secret,
+        "note": "Use this secret to verify HMAC signatures on incoming callbacks"
+    }
+
+
+@router.post(
+    "/{bic}/rotate-callback-secret",
+    summary="Rotate callback secret",
+    description="Generate a new callback secret for the actor.",
+)
+async def rotate_callback_secret(bic: str, db: AsyncSession = Depends(get_db)):
+    """Rotate the callback secret for an actor."""
+    # Check if actor exists
+    if not await _actor_exists(db, bic):
+        raise HTTPException(status_code=404, detail=f"Actor with BIC {bic} not found")
+    
+    # Generate new secret
+    new_secret = generate_callback_secret()
+    
+    # Update in database
+    update_query = text("""
+        UPDATE actors 
+        SET callback_secret = :new_secret, updated_at = CURRENT_TIMESTAMP
+        WHERE bic = :bic
+    """)
+    
+    await db.execute(update_query, {
+        "bic": bic.upper(),
+        "new_secret": new_secret
+    })
+    await db.commit()
+    
+    logger.info(f"Callback secret rotated for actor: {bic.upper()}")
+    
+    return {
+        "bic": bic.upper(),
+        "callbackSecret": new_secret,
+        "message": "Callback secret rotated successfully. Update your callback endpoint to use the new secret."
+    }

@@ -342,9 +342,14 @@ async def test_callback_endpoint(
     """
     Test a callback endpoint by sending a ping request.
     
+    Args:
+        callback_url: The URL to test
+        shared_secret: Optional secret for HMAC (uses default if not provided)
+    
     Returns:
         Dict with success status and response details
     """
+    # Use provided secret or fall back to default
     secret = shared_secret or DEFAULT_SHARED_SECRET
     timestamp = datetime.now(timezone.utc).isoformat()
     uetr = str(uuid4())

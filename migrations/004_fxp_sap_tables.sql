@@ -105,6 +105,68 @@ CREATE INDEX idx_trade_notifications_quote ON trade_notifications(quote_id);
 CREATE INDEX idx_trade_notifications_status ON trade_notifications(delivery_status) WHERE delivery_status != 'DELIVERED';
 
 -- =============================================================================
+-- Actor Registry (migrated from in-memory to PostgreSQL)
+-- =============================================================================
+
+-- Actors table with per-actor callback secrets
+CREATE TABLE IF NOT EXISTS actors (
+    actor_id VARCHAR(32) PRIMARY KEY,
+    bic VARCHAR(11) UNIQUE NOT NULL,
+    actor_type VARCHAR(4) NOT NULL CHECK (actor_type IN ('FXP', 'IPSO', 'PSP', 'SAP', 'PDO')),
+    name VARCHAR(255) NOT NULL,
+    country_code VARCHAR(2) NOT NULL,
+    callback_url VARCHAR(500),
+    callback_secret VARCHAR(255),  -- Per-actor HMAC secret (auto-generated or custom)
+    supported_currencies TEXT[],   -- PostgreSQL array of supported currency codes
+    status VARCHAR(20) DEFAULT 'ACTIVE',
+    registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_actors_bic ON actors(bic);
+CREATE INDEX idx_actors_type ON actors(actor_type);
+CREATE INDEX idx_actors_country ON actors(country_code);
+CREATE INDEX idx_actors_status ON actors(status) WHERE status = 'ACTIVE';
+
+-- Callback delivery logs for retry tracking and audit
+CREATE TABLE IF NOT EXISTS callback_delivery_logs (
+    log_id SERIAL PRIMARY KEY,
+    actor_bic VARCHAR(11) NOT NULL REFERENCES actors(bic),
+    event_type VARCHAR(50) NOT NULL,  -- PACS002, TRADE_NOTIFICATION, PING, etc.
+    uetr VARCHAR(36),
+    payload JSONB,
+    status VARCHAR(20) NOT NULL,  -- PENDING, DELIVERED, FAILED, RETRYING
+    attempts INTEGER DEFAULT 0,
+    last_attempt_at TIMESTAMP,
+    response_status_code INTEGER,
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_callback_logs_actor ON callback_delivery_logs(actor_bic);
+CREATE INDEX idx_callback_logs_status ON callback_delivery_logs(status) WHERE status IN ('PENDING', 'RETRYING');
+CREATE INDEX idx_callback_logs_uetr ON callback_delivery_logs(uetr);
+CREATE INDEX idx_callback_logs_created ON callback_delivery_logs(created_at);
+
+-- =============================================================================
+-- Migrate Pre-Seeded Actors from In-Memory to Database
+-- =============================================================================
+
+-- Insert pre-seeded actors (IPS changed to IPSO per Nexus spec)
+INSERT INTO actors (actor_id, bic, actor_type, name, country_code, callback_url, status, registered_at) VALUES
+('actor-dbs-sg', 'DBSSSGSG', 'PSP', 'DBS Bank Singapore', 'SG', NULL, 'ACTIVE', '2026-01-01T00:00:00Z'),
+('actor-kasikorn-bank', 'KASITHBK', 'PSP', 'Kasikorn Bank Thailand', 'TH', NULL, 'ACTIVE', '2026-01-01T00:00:00Z'),
+('actor-maybank-my', 'MABORKKL', 'PSP', 'Maybank Malaysia', 'MY', NULL, 'ACTIVE', '2026-01-01T00:00:00Z'),
+('actor-fxp-alpha', 'FXP-ABC', 'FXP', 'ABC Currency Exchange', 'SG', NULL, 'ACTIVE', '2026-01-01T00:00:00Z'),
+('actor-sg-ips', 'SGIPSOPS', 'IPSO', 'Singapore FAST IPS', 'SG', NULL, 'ACTIVE', '2026-01-01T00:00:00Z'),
+('actor-th-ips', 'THIPSOPS', 'IPSO', 'Thailand PromptPay IPS', 'TH', NULL, 'ACTIVE', '2026-01-01T00:00:00Z')
+ON CONFLICT (bic) DO UPDATE SET
+    actor_type = EXCLUDED.actor_type,
+    name = EXCLUDED.name,
+    updated_at = CURRENT_TIMESTAMP;
+
+-- =============================================================================
 -- Comments
 -- =============================================================================
 
@@ -113,3 +175,5 @@ COMMENT ON TABLE fxp_psp_relationships IS 'Relationships between FXPs and PSPs f
 COMMENT ON TABLE sap_reservations IS 'Liquidity reservations for payments';
 COMMENT ON TABLE sap_transactions IS 'Settlement transactions on FXP accounts';
 COMMENT ON TABLE trade_notifications IS 'Notifications sent to FXPs when their rates are selected';
+COMMENT ON TABLE actors IS 'Actor registry for sandbox participants (FXP, IPSO, PSP, SAP, PDO)';
+COMMENT ON TABLE callback_delivery_logs IS 'Audit log for callback delivery attempts with retry tracking';
