@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
+import { generateUUID } from "../utils/uuid";
 import {
     Title,
     Grid,
@@ -78,7 +79,7 @@ export function PaymentPage() {
     const [selectedCountry, setSelectedCountry] = useState<string | null>(null); // Destination country
     const [selectedProxyType, setSelectedProxyType] = useState<string | null>(null);
     const [recipientData, setRecipientData] = useState<Record<string, string>>({});
-    const [uetr, _setUetr] = useState<string>(crypto.randomUUID());
+    const [uetr, _setUetr] = useState<string>(generateUUID());
     // Nexus spec compliance: Instruction Priority (HIGH=25s, NORM=4hr)
     const [instructionPriority, setInstructionPriority] = useState<"HIGH" | "NORM">("NORM");
     // Step 12: Payment Reference (sender message to recipient)

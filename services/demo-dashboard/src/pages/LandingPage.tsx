@@ -220,7 +220,7 @@ export function LandingPage() {
                         variant="light"
                         leftSection={<IconBrandGithub size={18} />}
                         component="a"
-                        href="https://github.com/yourusername/nexus-sandbox"
+                        href="https://github.com/siva-sub/nexus-sandbox"
                         target="_blank"
                     >
                         View on GitHub

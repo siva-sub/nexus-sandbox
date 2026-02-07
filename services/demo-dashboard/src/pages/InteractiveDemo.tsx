@@ -17,6 +17,7 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
+import { generateUUID } from "../utils/uuid";
 import { useNavigate } from "react-router-dom";
 import {
     Title,
@@ -174,7 +175,7 @@ export function InteractiveDemo() {
             await new Promise(r => setTimeout(r, 500));
 
             // Step 10-17: Submit payment
-            const uetr = crypto.randomUUID();
+            const uetr = generateUUID();
             const pacs008Params = {
                 uetr,
                 quoteId: bestQuote.quoteId,
@@ -222,7 +223,7 @@ export function InteractiveDemo() {
 
             // Show as expected rejection for unhappy scenarios
             if (scenario !== "happy") {
-                setPaymentResult({ uetr: error.uetr || crypto.randomUUID(), status: rejectionCode, error: rejectionMessage });
+                setPaymentResult({ uetr: error.uetr || generateUUID(), status: rejectionCode, error: rejectionMessage });
                 setActive(3);
                 notifications.update({
                     id: "quick-demo",
@@ -372,7 +373,7 @@ export function InteractiveDemo() {
         setLoading(true);
 
         // Generate UETR for the payment
-        const uetr = crypto.randomUUID();
+        const uetr = generateUUID();
 
         try {
             // STEP 12: Confirm Sender Approval
