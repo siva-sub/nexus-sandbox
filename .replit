@@ -12,9 +12,5 @@ PAYMENT_TIMEOUT_SECONDS = "60"
 localPort = 3000
 externalPort = 80
 
-[[ports]]
-localPort = 8000
-externalPort = 8000
-
 [nix]
 channel = "stable-24_05"
