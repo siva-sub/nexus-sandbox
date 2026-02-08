@@ -43,7 +43,10 @@ TEMPLATES: Dict[str, Iso20022Template] = {
         <UETR>91398cbd-0838-453f-b2c7-536e829f2b8e</UETR>
       </PmtId>
       <IntrBkSttlmAmt Ccy="SGD">1000.00</IntrBkSttlmAmt>
-      <AccptncDtTm>2026-02-04T18:00:00Z</AccptncDtTm>
+      <IntrBkSttlmDt>2026-02-04</IntrBkSttlmDt>
+      <AddtlDtTm>
+        <AccptncDtTm>2026-02-04T18:00:00Z</AccptncDtTm>
+      </AddtlDtTm>
       <XchgRate>1.345</XchgRate>
       <ChrgBr>SHAR</ChrgBr>
       <InstgAgt>
@@ -58,6 +61,12 @@ TEMPLATES: Dict[str, Iso20022Template] = {
       <DbtrAcct>
         <Id><Othr><Id>1234567890</Id></Othr></Id>
       </DbtrAcct>
+      <DbtrAgt>
+        <FinInstnId><BICFI>DBSSSGSG</BICFI></FinInstnId>
+      </DbtrAgt>
+      <CdtrAgt>
+        <FinInstnId><BICFI>KASITHBK</BICFI></FinInstnId>
+      </CdtrAgt>
       <Cdtr>
         <Nm>Jane Smith</Nm>
       </Cdtr>

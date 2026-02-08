@@ -382,9 +382,11 @@ function buildPacs008Xml(params: Pacs008Params): string {
       <PmtTpInf>
         <InstrPrty>${instructionPriority}</InstrPrty>
       </PmtTpInf>
-      <AccptncDtTm>${acceptanceDateTime}</AccptncDtTm>
       <IntrBkSttlmAmt Ccy="${escapeXml(params.sourceCurrency)}">${params.sourceAmount.toFixed(2)}</IntrBkSttlmAmt>
       <IntrBkSttlmDt>${now.split('T')[0]}</IntrBkSttlmDt>
+      <AddtlDtTm>
+        <AccptncDtTm>${acceptanceDateTime}</AccptncDtTm>
+      </AddtlDtTm>
       <InstdAmt Ccy="${escapeXml(params.destinationCurrency)}">${params.destinationAmount.toFixed(2)}</InstdAmt>
       <XchgRate>${params.exchangeRate}</XchgRate>
       <ChrgBr>SHAR</ChrgBr>

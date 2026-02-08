@@ -849,10 +849,10 @@ export function InteractiveDemo() {
         <ClrSys><Prtry>FAST</Prtry></ClrSys>
       </PmtTpInf>
       <IntrBkSttlmAmt Ccy="${ptd?.sourceCurrency ?? 'SGD'}">${ptd?.senderPrincipal ?? '0.00'}</IntrBkSttlmAmt>
-      <AccptncDtTm>${new Date().toISOString()}</AccptncDtTm>
-      <XchgRateInformation>
-        <XchgRate>${selectedQuote?.exchangeRate ?? '1.0000'}</XchgRate>
-      </XchgRateInformation>
+      <AddtlDtTm>
+        <AccptncDtTm>${new Date().toISOString()}</AccptncDtTm>
+      </AddtlDtTm>
+      <XchgRate>${selectedQuote?.exchangeRate ?? '1.0000'}</XchgRate>
       <ChrgBr>SHAR</ChrgBr>
       <Dbtr><Nm>Demo Sender</Nm></Dbtr>
       <DbtrAcct><Id><Othr><Id>SG1234567890</Id></Othr></Id></DbtrAcct>
