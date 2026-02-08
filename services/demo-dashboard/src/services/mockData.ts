@@ -82,10 +82,12 @@ interface MockMessage {
 
 interface MockEvent {
     eventId: string;
+    event_id: string; // Alias for PaymentsExplorer compatibility
     uetr: string; // Required for PaymentEvent compatibility
     eventType: string;
     event_type?: string; // Alias for backend sync compatibility
     timestamp: string;
+    occurred_at: string; // Alias for PaymentsExplorer compatibility
     actor: string;
     data: Record<string, unknown>; // Required for PaymentEvent compatibility
     details: Record<string, unknown>;
@@ -148,14 +150,14 @@ class MockPaymentStore {
                 {
                     messageType: "camt.103.001.02",
                     direction: "outbound",
-                    xml: `<!-- camt.103 CreateReservation → Source SAP (${params.sourceCurrency}) -->\n<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.103.001.02">\n  <CreateRsvatn>\n    <MsgId>${params.uetr}-SSAP-RES</MsgId>\n    <RsvatnId><Id>${params.uetr}-SSAP</Id></RsvatnId>\n    <Amt Ccy="${params.sourceCurrency}">${params.sourceAmount}</Amt>\n    <AcctOwnr><FinInstnId><BICFI>${params.debtorAgentBic}</BICFI></FinInstnId></AcctOwnr>\n    <StsRsn>Source SAP funds reservation for Nexus settlement</StsRsn>\n  </CreateRsvatn>\n</Document>`,
+                    xml: `<!-- camt.103 CreateReservation → Source SAP (${params.sourceCurrency}) -->\n<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.103.001.03">\n  <CretRsvatn>\n    <MsgHdr>\n      <MsgId>${params.uetr}-SSAP-RES</MsgId>\n      <CreDtTm>${now}</CreDtTm>\n    </MsgHdr>\n    <RsvatnId>\n      <Tp><Cd>THRE</Cd></Tp>\n    </RsvatnId>\n    <ValSet>\n      <Amt><AmtWthCcy Ccy="${params.sourceCurrency}">${params.sourceAmount}</AmtWthCcy></Amt>\n    </ValSet>\n  </CretRsvatn>\n</Document>`,
                     timestamp: now,
                     description: "camt.103 → Source SAP: Lock source-currency funds on FXP nostro"
                 },
                 {
                     messageType: "camt.103.001.02",
                     direction: "outbound",
-                    xml: `<!-- camt.103 CreateReservation → Dest SAP (${params.destinationCurrency}) -->\n<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.103.001.02">\n  <CreateRsvatn>\n    <MsgId>${params.uetr}-DSAP-RES</MsgId>\n    <RsvatnId><Id>${params.uetr}-DSAP</Id></RsvatnId>\n    <Amt Ccy="${params.destinationCurrency}">${params.destinationAmount}</Amt>\n    <AcctOwnr><FinInstnId><BICFI>${params.creditorAgentBic}</BICFI></FinInstnId></AcctOwnr>\n    <StsRsn>Dest SAP funds reservation for Nexus settlement</StsRsn>\n  </CreateRsvatn>\n</Document>`,
+                    xml: `<!-- camt.103 CreateReservation → Dest SAP (${params.destinationCurrency}) -->\n<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.103.001.03">\n  <CretRsvatn>\n    <MsgHdr>\n      <MsgId>${params.uetr}-DSAP-RES</MsgId>\n      <CreDtTm>${now}</CreDtTm>\n    </MsgHdr>\n    <RsvatnId>\n      <Tp><Cd>THRE</Cd></Tp>\n    </RsvatnId>\n    <ValSet>\n      <Amt><AmtWthCcy Ccy="${params.destinationCurrency}">${params.destinationAmount}</AmtWthCcy></Amt>\n    </ValSet>\n  </CretRsvatn>\n</Document>`,
                     timestamp: now,
                     description: "camt.103 → Dest SAP: Lock dest-currency funds on FXP nostro"
                 },
@@ -176,28 +178,28 @@ class MockPaymentStore {
             ],
             events: [
                 // Step 1: Payment initiated by Source PSP
-                { eventId: `evt-${Date.now()}-01`, uetr: params.uetr, eventType: "PAYMENT_INITIATED", event_type: "PAYMENT_INITIATED", timestamp: now, actor: params.debtorAgentBic, data: { message: "Source PSP initiates cross-border payment" }, details: {} },
+                { eventId: `evt-${Date.now()}-01`, event_id: `evt-${Date.now()}-01`, uetr: params.uetr, eventType: "PAYMENT_INITIATED", event_type: "PAYMENT_INITIATED", timestamp: now, occurred_at: now, actor: params.debtorAgentBic, data: { step: 1, message: "Source PSP initiates cross-border payment" }, details: {} },
                 // Step 2: Nexus validates the locked quote
-                { eventId: `evt-${Date.now()}-02`, uetr: params.uetr, eventType: "QUOTE_VALIDATED", event_type: "QUOTE_VALIDATED", timestamp: now, actor: "NEXUSGWS", data: { quoteId: params.quoteId, message: "Quote validated and rate locked" }, details: { quoteId: params.quoteId } },
+                { eventId: `evt-${Date.now()}-02`, event_id: `evt-${Date.now()}-02`, uetr: params.uetr, eventType: "QUOTE_VALIDATED", event_type: "QUOTE_VALIDATED", timestamp: now, occurred_at: now, actor: "NEXUSGWS", data: { step: 2, quoteId: params.quoteId, message: "Quote validated and rate locked" }, details: { quoteId: params.quoteId } },
                 // Step 3: camt.103 → Source SAP reserves source-currency funds
-                { eventId: `evt-${Date.now()}-03`, uetr: params.uetr, eventType: "RESERVATION_CREATED", event_type: "RESERVATION_CREATED", timestamp: now, actor: "S-SAP", data: { leg: "SOURCE", currency: params.sourceCurrency, amount: String(params.sourceAmount), isoMessage: "camt.103", message: `camt.103 CreateReservation sent to Source SAP — ${params.sourceCurrency} ${params.sourceAmount} locked on FXP nostro` }, details: { leg: "SOURCE" } },
+                { eventId: `evt-${Date.now()}-03`, event_id: `evt-${Date.now()}-03`, uetr: params.uetr, eventType: "RESERVATION_CREATED", event_type: "RESERVATION_CREATED", timestamp: now, occurred_at: now, actor: "S-SAP", data: { step: 3, leg: "SOURCE", currency: params.sourceCurrency, amount: String(params.sourceAmount), isoMessage: "camt.103", message: `camt.103 CreateReservation sent to Source SAP — ${params.sourceCurrency} ${params.sourceAmount} locked on FXP nostro` }, details: { leg: "SOURCE" } },
                 // Step 4: camt.103 → Dest SAP reserves dest-currency funds
-                { eventId: `evt-${Date.now()}-04`, uetr: params.uetr, eventType: "RESERVATION_CREATED", event_type: "RESERVATION_CREATED", timestamp: now, actor: "D-SAP", data: { leg: "DESTINATION", currency: params.destinationCurrency, amount: String(params.destinationAmount), isoMessage: "camt.103", message: `camt.103 CreateReservation sent to Dest SAP — ${params.destinationCurrency} ${params.destinationAmount} locked on FXP nostro` }, details: { leg: "DESTINATION" } },
+                { eventId: `evt-${Date.now()}-04`, event_id: `evt-${Date.now()}-04`, uetr: params.uetr, eventType: "RESERVATION_CREATED", event_type: "RESERVATION_CREATED", timestamp: now, occurred_at: now, actor: "D-SAP", data: { step: 4, leg: "DESTINATION", currency: params.destinationCurrency, amount: String(params.destinationAmount), isoMessage: "camt.103", message: `camt.103 CreateReservation sent to Dest SAP — ${params.destinationCurrency} ${params.destinationAmount} locked on FXP nostro` }, details: { leg: "DESTINATION" } },
                 // Step 5: pacs.008 submitted to IPS for clearing
-                { eventId: `evt-${Date.now()}-05`, uetr: params.uetr, eventType: "PACS008_SUBMITTED", event_type: "PACS008_SUBMITTED", timestamp: now, actor: "NEXUSGWS", data: { isoMessage: "pacs.008", message: "pacs.008 FI-to-FI Credit Transfer submitted to IPS" }, details: {} },
+                { eventId: `evt-${Date.now()}-05`, event_id: `evt-${Date.now()}-05`, uetr: params.uetr, eventType: "PACS008_SUBMITTED", event_type: "PACS008_SUBMITTED", timestamp: now, occurred_at: now, actor: "NEXUSGWS", data: { step: 5, isoMessage: "pacs.008", message: "pacs.008 FI-to-FI Credit Transfer submitted to IPS" }, details: {} },
                 // Step 6: pacs.002 received from IPS with payment outcome
-                { eventId: `evt-${Date.now()}-06`, uetr: params.uetr, eventType: "PACS002_RECEIVED", event_type: "PACS002_RECEIVED", timestamp: now, actor: "NEXUSGWS", data: { isoMessage: "pacs.002", status, statusReasonCode, message: `pacs.002 Payment Status Report received — ${status}${statusReasonCode ? ` (${statusReasonCode})` : ''}` }, details: { status, statusReasonCode } },
+                { eventId: `evt-${Date.now()}-06`, event_id: `evt-${Date.now()}-06`, uetr: params.uetr, eventType: "PACS002_RECEIVED", event_type: "PACS002_RECEIVED", timestamp: now, occurred_at: now, actor: "NEXUSGWS", data: { step: 6, isoMessage: "pacs.002", status, statusReasonCode, message: `pacs.002 Payment Status Report received — ${status}${statusReasonCode ? ` (${statusReasonCode})` : ''}` }, details: { status, statusReasonCode } },
                 // Step 7-8: Reservation outcome driven by pacs.002 status
                 ...(status === "ACCC" ? [
                     // ACCC → UTILIZED: SAPs finalize debit, settlement complete
-                    { eventId: `evt-${Date.now()}-07`, uetr: params.uetr, eventType: "RESERVATION_UTILIZED", event_type: "RESERVATION_UTILIZED", timestamp: now, actor: "S-SAP", data: { leg: "SOURCE", currency: params.sourceCurrency, amount: String(params.sourceAmount), trigger: "pacs.002 ACCC", message: `Source SAP reservation UTILIZED — ${params.sourceCurrency} ${params.sourceAmount} debited from FXP nostro (settlement finalized)` }, details: { leg: "SOURCE" } },
-                    { eventId: `evt-${Date.now()}-08`, uetr: params.uetr, eventType: "RESERVATION_UTILIZED", event_type: "RESERVATION_UTILIZED", timestamp: now, actor: "D-SAP", data: { leg: "DESTINATION", currency: params.destinationCurrency, amount: String(params.destinationAmount), trigger: "pacs.002 ACCC", message: `Dest SAP reservation UTILIZED — ${params.destinationCurrency} ${params.destinationAmount} debited from FXP nostro (settlement finalized)` }, details: { leg: "DESTINATION" } },
-                    { eventId: `evt-${Date.now()}-09`, uetr: params.uetr, eventType: "SETTLEMENT_COMPLETE", event_type: "SETTLEMENT_COMPLETE", timestamp: now, actor: "NEXUSGWS", data: { status: "ACCC", message: "Settlement complete — recipient credited" }, details: { status: "ACCC" } },
+                    { eventId: `evt-${Date.now()}-07`, event_id: `evt-${Date.now()}-07`, uetr: params.uetr, eventType: "RESERVATION_UTILIZED", event_type: "RESERVATION_UTILIZED", timestamp: now, occurred_at: now, actor: "S-SAP", data: { step: 7, leg: "SOURCE", currency: params.sourceCurrency, amount: String(params.sourceAmount), trigger: "pacs.002 ACCC", message: `Source SAP reservation UTILIZED — ${params.sourceCurrency} ${params.sourceAmount} debited from FXP nostro (settlement finalized)` }, details: { leg: "SOURCE" } },
+                    { eventId: `evt-${Date.now()}-08`, event_id: `evt-${Date.now()}-08`, uetr: params.uetr, eventType: "RESERVATION_UTILIZED", event_type: "RESERVATION_UTILIZED", timestamp: now, occurred_at: now, actor: "D-SAP", data: { step: 8, leg: "DESTINATION", currency: params.destinationCurrency, amount: String(params.destinationAmount), trigger: "pacs.002 ACCC", message: `Dest SAP reservation UTILIZED — ${params.destinationCurrency} ${params.destinationAmount} debited from FXP nostro (settlement finalized)` }, details: { leg: "DESTINATION" } },
+                    { eventId: `evt-${Date.now()}-09`, event_id: `evt-${Date.now()}-09`, uetr: params.uetr, eventType: "SETTLEMENT_COMPLETE", event_type: "SETTLEMENT_COMPLETE", timestamp: now, occurred_at: now, actor: "NEXUSGWS", data: { step: 9, status: "ACCC", message: "Settlement complete — recipient credited" }, details: { status: "ACCC" } },
                 ] : [
                     // RJCT → CANCELLED: SAPs release reservations, funds unlocked
-                    { eventId: `evt-${Date.now()}-07`, uetr: params.uetr, eventType: "RESERVATION_CANCELLED", event_type: "RESERVATION_CANCELLED", timestamp: now, actor: "S-SAP", data: { leg: "SOURCE", currency: params.sourceCurrency, amount: String(params.sourceAmount), trigger: `pacs.002 RJCT (${statusReasonCode})`, message: `Source SAP reservation CANCELLED — ${params.sourceCurrency} ${params.sourceAmount} released back to FXP nostro` }, details: { leg: "SOURCE" } },
-                    { eventId: `evt-${Date.now()}-08`, uetr: params.uetr, eventType: "RESERVATION_CANCELLED", event_type: "RESERVATION_CANCELLED", timestamp: now, actor: "D-SAP", data: { leg: "DESTINATION", currency: params.destinationCurrency, amount: String(params.destinationAmount), trigger: `pacs.002 RJCT (${statusReasonCode})`, message: `Dest SAP reservation CANCELLED — ${params.destinationCurrency} ${params.destinationAmount} released back to FXP nostro` }, details: { leg: "DESTINATION" } },
-                    { eventId: `evt-${Date.now()}-09`, uetr: params.uetr, eventType: "PAYMENT_REJECTED", event_type: "PAYMENT_REJECTED", timestamp: now, actor: "NEXUSGWS", data: { status: "RJCT", statusReasonCode, message: `Payment rejected (${statusReasonCode}) — reservations cancelled, funds released` }, details: { status: "RJCT", statusReasonCode } },
+                    { eventId: `evt-${Date.now()}-07`, event_id: `evt-${Date.now()}-07`, uetr: params.uetr, eventType: "RESERVATION_CANCELLED", event_type: "RESERVATION_CANCELLED", timestamp: now, occurred_at: now, actor: "S-SAP", data: { step: 7, leg: "SOURCE", currency: params.sourceCurrency, amount: String(params.sourceAmount), trigger: `pacs.002 RJCT (${statusReasonCode})`, message: `Source SAP reservation CANCELLED — ${params.sourceCurrency} ${params.sourceAmount} released back to FXP nostro` }, details: { leg: "SOURCE" } },
+                    { eventId: `evt-${Date.now()}-08`, event_id: `evt-${Date.now()}-08`, uetr: params.uetr, eventType: "RESERVATION_CANCELLED", event_type: "RESERVATION_CANCELLED", timestamp: now, occurred_at: now, actor: "D-SAP", data: { step: 8, leg: "DESTINATION", currency: params.destinationCurrency, amount: String(params.destinationAmount), trigger: `pacs.002 RJCT (${statusReasonCode})`, message: `Dest SAP reservation CANCELLED — ${params.destinationCurrency} ${params.destinationAmount} released back to FXP nostro` }, details: { leg: "DESTINATION" } },
+                    { eventId: `evt-${Date.now()}-09`, event_id: `evt-${Date.now()}-09`, uetr: params.uetr, eventType: "PAYMENT_REJECTED", event_type: "PAYMENT_REJECTED", timestamp: now, occurred_at: now, actor: "NEXUSGWS", data: { step: 9, status: "RJCT", statusReasonCode, message: `Payment rejected (${statusReasonCode}) — reservations cancelled, funds released` }, details: { status: "RJCT", statusReasonCode } },
                 ]),
             ]
         };
@@ -275,8 +277,11 @@ class MockPaymentStore {
       </PmtId>
       <IntrBkSttlmAmt Ccy="${params.sourceCurrency}">${params.sourceAmount.toFixed(2)}</IntrBkSttlmAmt>
       <IntrBkSttlmDt>${timestamp.split('T')[0]}</IntrBkSttlmDt>
-      <XchgRate>${params.exchangeRate}</XchgRate>
+      <AddtlDtTm>
+        <AccptncDtTm>${timestamp}</AccptncDtTm>
+      </AddtlDtTm>
       <InstdAmt Ccy="${params.destinationCurrency}">${params.destinationAmount.toFixed(2)}</InstdAmt>
+      <XchgRate>${params.exchangeRate}</XchgRate>
       <ChrgBr>SHAR</ChrgBr>
       <Dbtr><Nm>${params.debtorName}</Nm></Dbtr>
       <DbtrAcct><Id><Othr><Id>${params.debtorAccount}</Id></Othr></Id></DbtrAcct>
@@ -297,14 +302,16 @@ class MockPaymentStore {
         <StsRsnInf><Rsn><Cd>${reasonCode || "NARR"}</Cd></Rsn></StsRsnInf>`;
 
         return `<?xml version="1.0" encoding="UTF-8"?>
-<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.002.001.12">
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.002.001.15">
   <FIToFIPmtStsRpt>
     <GrpHdr>
       <MsgId>PACS002-${Date.now()}</MsgId>
       <CreDtTm>${timestamp}</CreDtTm>
     </GrpHdr>
     <TxInfAndSts>
+      <OrgnlInstrId>INSTR-${Date.now()}</OrgnlInstrId>
       <OrgnlEndToEndId>E2E-${Date.now()}</OrgnlEndToEndId>
+      <OrgnlTxId>TX-${Date.now()}</OrgnlTxId>
       <OrgnlUETR>${params.uetr}</OrgnlUETR>
       ${statusInfo}
       <InstgAgt><FinInstnId><BICFI>${params.debtorAgentBic}</BICFI></FinInstnId></InstgAgt>
@@ -934,10 +941,10 @@ export const mockIsoTemplates: Record<string, { name: string; description: strin
         description: "Status report for payment instructions",
         xml: "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Document xmlns=\"urn:iso:std:iso:20022:tech:xsd:pacs.002.001.12\">\n  <FIToFIPmtStsRpt>\n    <GrpHdr>\n      <MsgId>STATUS-EXAMPLE</MsgId>\n      <CreDtTm>2026-01-01T00:00:00Z</CreDtTm>\n    </GrpHdr>\n  </FIToFIPmtStsRpt>\n</Document>"
     },
-    "camt.054.001.11": {
+    "camt.054.001.13": {
         name: "Bank to Customer Debit/Credit Notification",
         description: "Reconciliation report for IPS operators",
-        xml: "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Document xmlns=\"urn:iso:std:iso:20022:tech:xsd:camt.054.001.11\">\n  <BkToCstmrDbtCdtNtfctn>\n    <GrpHdr>\n      <MsgId>CAMT054-EXAMPLE</MsgId>\n      <CreDtTm>2026-01-01T00:00:00Z</CreDtTm>\n    </GrpHdr>\n  </BkToCstmrDbtCdtNtfctn>\n</Document>"
+        xml: "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Document xmlns=\"urn:iso:std:iso:20022:tech:xsd:camt.054.001.13\">\n  <BkToCstmrDbtCdtNtfctn>\n    <GrpHdr>\n      <MsgId>CAMT054-EXAMPLE</MsgId>\n      <CreDtTm>2026-01-01T00:00:00Z</CreDtTm>\n    </GrpHdr>\n  </BkToCstmrDbtCdtNtfctn>\n</Document>"
     }
 };
 

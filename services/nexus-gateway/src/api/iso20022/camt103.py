@@ -35,7 +35,7 @@ def _extract_reservation_details(xml_content: str) -> dict:
     details = {}
     try:
         root = etree.fromstring(xml_content.encode())
-        ns = {'doc': 'urn:iso:std:iso:20022:tech:xsd:camt.103.001.02'}
+        ns = {'doc': 'urn:iso:std:iso:20022:tech:xsd:camt.103.001.03'}
         
         # Try namespaced first, then fallback without namespace
         for ns_prefix, namespaces in [('doc:', ns), ('', {})]:

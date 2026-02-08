@@ -89,8 +89,12 @@ def parse_pacs008(xml_content: str) -> dict:
             "uetr": get_text(".//UETR") or get_text(".//doc:UETR"),
             "messageId": get_text(".//MsgId") or get_text(".//doc:MsgId"),
             "endToEndId": get_text(".//EndToEndId") or get_text(".//doc:EndToEndId"),
-            # Quote ID per docs: AgrdRate/QtId is the primary source, RgltryRptg/Dtls/Inf for Nexus custom
-            "quoteId": get_text(".//AgrdRate/QtId") or get_text(".//doc:AgrdRate/doc:QtId") or get_text(".//XchgRateInf/CtrctId") or get_text(".//doc:XchgRateInf/doc:CtrctId") or get_text(".//RgltryRptg/Dtls/Inf") or get_text(".//doc:RgltryRptg/doc:Dtls/doc:Inf") or get_text(".//InstrId") or get_text(".//doc:InstrId"),
+            # FX Quote ID per Nexus official docs (AgrdRate/QtId section):
+            # Primary: AgrdRate/QtId — the spec-defined location for FX Quote ID
+            # Fallback: XchgRateInf/CtrctId — ISO 20022 standard contract ID location
+            # Note: Quote ID is OPTIONAL. Absent when Source PSP provides own FX.
+            # Do NOT fall back to InstrId — that is the instruction identifier, not a quote ID.
+            "quoteId": get_text(".//AgrdRate/QtId") or get_text(".//doc:AgrdRate/doc:QtId") or get_text(".//XchgRateInf/CtrctId") or get_text(".//doc:XchgRateInf/doc:CtrctId"),
             "exchangeRate": get_text(".//PreAgrdXchgRate") or get_text(".//doc:PreAgrdXchgRate") or get_text(".//XchgRate") or get_text(".//doc:XchgRate"),
             "settlementAmount": get_text(".//IntrBkSttlmAmt") or get_text(".//doc:IntrBkSttlmAmt"),
             "settlementCurrency": get_text(".//IntrBkSttlmAmt/@Ccy"),
@@ -438,6 +442,7 @@ def build_pacs002_acceptance(
     original_instr_id: str | None = None,
     original_end_to_end_id: str | None = None,
     original_tx_id: str | None = None,
+    debtor_agent_bic: str | None = None,
 ) -> str:
     """Build pacs.002 Payment Status Report (Acceptance).
     
@@ -450,6 +455,9 @@ def build_pacs002_acceptance(
     instr_id = original_instr_id or uetr
     e2e_id = original_end_to_end_id or uetr
     tx_id = original_tx_id or uetr
+    
+    instg_agt_xml = '<InstgAgt><FinInstnId><BICFI>NEXUSGSG</BICFI></FinInstnId></InstgAgt>'
+    instd_agt_xml = f'<InstdAgt><FinInstnId><BICFI>{debtor_agent_bic}</BICFI></FinInstnId></InstdAgt>' if debtor_agent_bic else ''
     
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.002.001.15">
@@ -465,9 +473,11 @@ def build_pacs002_acceptance(
       <OrgnlUETR>{uetr}</OrgnlUETR>
       <TxSts>{status_code}</TxSts>
       <StsRsnInf>
-        <Rsn><Cd>AC01</Cd></Rsn>
-        <AddtlInf>Payment accepted and settled</AddtlInf>
+        <AddtlInf>Payment accepted - credited to beneficiary account</AddtlInf>
       </StsRsnInf>
+      <AccptncDtTm>{now}</AccptncDtTm>
+      {instg_agt_xml}
+      {instd_agt_xml}
       <OrgnlTxRef>
         <IntrBkSttlmAmt Ccy="{settlement_currency}">{settlement_amount}</IntrBkSttlmAmt>
       </OrgnlTxRef>
@@ -485,6 +495,7 @@ def build_pacs002_rejection(
     original_instr_id: str | None = None,
     original_end_to_end_id: str | None = None,
     original_tx_id: str | None = None,
+    debtor_agent_bic: str | None = None,
 ) -> str:
     """Build pacs.002 Payment Status Report (Rejection).
     
@@ -496,6 +507,9 @@ def build_pacs002_rejection(
     instr_id = original_instr_id or uetr
     e2e_id = original_end_to_end_id or uetr
     tx_id = original_tx_id or uetr
+    
+    instg_agt_xml = '<InstgAgt><FinInstnId><BICFI>NEXUSGSG</BICFI></FinInstnId></InstgAgt>'
+    instd_agt_xml = f'<InstdAgt><FinInstnId><BICFI>{debtor_agent_bic}</BICFI></FinInstnId></InstdAgt>' if debtor_agent_bic else ''
     
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.002.001.15">
@@ -514,6 +528,8 @@ def build_pacs002_rejection(
         <Rsn><Cd>{reason_code}</Cd></Rsn>
         <AddtlInf>{reason_description}</AddtlInf>
       </StsRsnInf>
+      {instg_agt_xml}
+      {instd_agt_xml}
     </TxInfAndSts>
   </FIToFIPmtStsRpt>
 </Document>"""
@@ -532,7 +548,7 @@ def build_camt054(
     msg_id = f"CAMT054-{uetr[:8]}-{int(datetime.now(timezone.utc).timestamp())}"
     
     return f"""<?xml version="1.0" encoding="UTF-8"?>
-<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.054.001.11">
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.054.001.13">
   <BkToCstmrDbtCdtNtfctn>
     <GrpHdr>
       <MsgId>{msg_id}</MsgId>
@@ -554,6 +570,12 @@ def build_camt054(
         <Sts>
           <Cd>{status}</Cd>
         </Sts>
+        <BookgDt>
+          <Dt>{now[:10]}</Dt>
+        </BookgDt>
+        <ValDt>
+          <Dt>{now[:10]}</Dt>
+        </ValDt>
         <BkTxCd>
           <Domn>
             <Cd>PMNT</Cd>
@@ -563,12 +585,6 @@ def build_camt054(
             </Fmly>
           </Domn>
         </BkTxCd>
-        <NtryDt>
-          <Dt>{now[:10]}</Dt>
-        </NtryDt>
-        <BookgDt>
-          <Dt>{now[:10]}</Dt>
-        </BookgDt>
         <NtryDtls>
           <TxDtls>
             <Refs>
@@ -625,6 +641,11 @@ async def process_pacs008(
         alias="scenarioCode",
         description="Demo scenario code for unhappy flow testing (e.g., 'AB04', 'TM01', 'AM04')"
     ),
+    correlation_id: Optional[str] = Query(
+        None,
+        alias="correlationId",
+        description="Optional correlation ID to link with proxy resolution (acmt.023/acmt.024) events"
+    ),
     db: AsyncSession = Depends(get_db)
 ) -> Pacs008Response:
     """
@@ -666,7 +687,7 @@ async def process_pacs008(
                 "sandboxMode": True
             },
             pacs008_xml=xml_content
-        )
+        , correlation_id=correlation_id)
         logger.warning(f"XSD validation warnings (sandbox lenient mode): {xsd_result.errors[:2]}")
     
     # Step 2: Parse XML
@@ -745,7 +766,7 @@ async def process_pacs008(
             if demo_reservation_id:
                 # Record reservation creation event
                 camt103_xml = (
-                    f'<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.103.001.02">'
+                    f'<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.103.001.03">'
                     f'<CreateRsvatn>'
                     f'<MsgId>{uetr}-DSAP</MsgId>'
                     f'<RsvatnId><Id>{demo_reservation_id}</Id></RsvatnId>'
@@ -772,7 +793,7 @@ async def process_pacs008(
                         "message": f"camt.103 CreateReservation → SAP ({dest_sap}) locks {dest_currency} {dest_amount}",
                     },
                     camt103_xml=camt103_xml
-                )
+                , correlation_id=correlation_id)
                 
                 # Now cancel the reservation (ACTIVE → CANCELLED)
                 cancelled = await cancel_reservation_for_payment(db=db, uetr=uetr)
@@ -795,7 +816,7 @@ async def process_pacs008(
                         "cancelled": cancelled,
                         "message": f"Reservation CANCELLED — funds released at SAP ({dest_sap}) due to {scenario_reason}: {reason_desc}",
                     }
-                )
+                , correlation_id=correlation_id)
                 
                 logger.info(f"Demo rejection: reservation {demo_reservation_id} created then cancelled for UETR {uetr}")
         
@@ -819,7 +840,7 @@ async def process_pacs008(
             },
             pacs008_xml=xml_content,
             pacs002_xml=pacs002_xml
-        )
+        , correlation_id=correlation_id)
 
         # Trigger callback for demo scenario rejection
         if pacs002_endpoint:
@@ -878,7 +899,8 @@ async def process_pacs008(
             uetr=validation.uetr,
             status_code="RJCT",
             reason_code=validation.statusReasonCode,
-            reason_description=validation.errors[0] if validation.errors else "Validation failed"
+            reason_description=validation.errors[0] if validation.errors else "Validation failed",
+            debtor_agent_bic=parsed.get("debtorAgentBic")
         )
         
         await store_payment_event(
@@ -892,7 +914,7 @@ async def process_pacs008(
             },
             pacs008_xml=xml_content,
             pacs002_xml=pacs002_xml
-        )
+        , correlation_id=correlation_id)
 
         # Trigger callback delivery for rejected payment
         if pacs002_endpoint:
@@ -946,10 +968,12 @@ async def process_pacs008(
     # Full Nexus Actor Event Chain (per Nexus docs)
     # Ref: https://docs.nexusglobalpayments.org/payment-processing/payment-flow-happy-path
     # ==========================================================================
+    now = datetime.now(timezone.utc).isoformat()
     debtor_bic = parsed.get("debtorAgentBic", "")
     creditor_bic = parsed.get("creditorAgentBic", "")
     
     # Event 1: Source PSP — debit/reserve sender's account
+    # Per §16.2: PSP selects best FXP quote and initiates payment
     await store_payment_event(
         db=db,
         uetr=validation.uetr,
@@ -961,10 +985,30 @@ async def process_pacs008(
             "debtorName": parsed.get("debtorName", "Unknown"),
             "amount": str(parsed.get("settlementAmount", "0")),
             "currency": parsed.get("settlementCurrency", "USD"),
+            # PSP→FXP quote selection data (§16.2)
+            "quoteId": validation.quoteId,
+            "exchangeRate": parsed.get("exchangeRate"),
+            "fxpId": validation.quote_data.get("fxp_id") if validation.quote_data else None,
         }
-    )
+    , correlation_id=correlation_id)
+    
+    # Event 1.5: Source IPSO translates and forwards pacs.008 to Nexus Gateway
+    # Per §15.1: S-IPSO translates domestic format → ISO 20022 pacs.008
+    await store_payment_event(
+        db=db,
+        uetr=validation.uetr,
+        event_type="IPSO_FORWARDING",
+        actor="S-IPSO",
+        data={
+            "step": 1.5,
+            "leg": "SOURCE",
+            "isoMessage": "pacs.008",
+            "message": "Source IPSO translates domestic format → ISO 20022 pacs.008, forwards to Nexus Gateway",
+        }
+    , correlation_id=correlation_id)
     
     # Event 2: Source IPS — ensures settlement certainty (reservation or prefund)
+    # Per §15.2: IPSO must ensure settlement between SAP and PSP before positive pacs.002
     await store_payment_event(
         db=db,
         uetr=validation.uetr,
@@ -972,9 +1016,18 @@ async def process_pacs008(
         actor="S-IPS",
         data={
             "step": 2,
-            "message": "Source IPS ensures settlement certainty (funds reservation on S-PSP prefund)",
+            "isoMessage": "internal",
+            "message": "Source IPS ensures settlement certainty — verifies prefund/reservation between S-SAP and S-PSP",
+            "settlementModel": "PREFUND",
+            "ipsoRole": "Settlement certainty provider (§15.2)",
+            "ipsoDuties": [
+                "Message translation: domestic format ↔ ISO 20022",
+                "Settlement certainty: verify SAP-PSP settlement capability",
+                "Timeout enforcement: HIGH=25s, NORM=4hr",
+                "Code translation: domestic codes → ISO 20022 ExternalStatusReason1Code",
+            ],
         }
-    )
+    , correlation_id=correlation_id)
     
     # Event 3–4: Source SAP + camt.103 CreateReservation — lock source-currency FXP nostro
     # Event 5–6: Dest SAP + camt.103 CreateReservation — lock dest-currency FXP nostro
@@ -990,14 +1043,18 @@ async def process_pacs008(
         
         # Build camt.103 XML for Source SAP
         source_camt103_xml = (
-            f'<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.103.001.02">'
-            f'<CreateRsvatn>'
-            f'<MsgId>{validation.uetr}-SSAP</MsgId>'
-            f'<RsvatnId><Id>{validation.uetr}-SSAP-RES</Id></RsvatnId>'
-            f'<Amt Ccy="{source_currency_val}">{source_amount_val}</Amt>'
+            f'<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.103.001.03">'
+            f'<CretRsvatn>'
+            f'<MsgHdr><MsgId>{validation.uetr}-SSAP</MsgId><CreDtTm>{now}</CreDtTm></MsgHdr>'
+            f'<RsvatnId>'
+            f'<RsvatnId>{validation.uetr}-SSAP-RES</RsvatnId>'
+            f'<Tp><Cd>CARE</Cd></Tp>'
             f'<AcctOwnr><FinInstnId><BICFI>{source_sap_bic}</BICFI></FinInstnId></AcctOwnr>'
-            f'<StsRsn>Source SAP: FXP nostro reservation for Nexus settlement</StsRsn>'
-            f'</CreateRsvatn></Document>'
+            f'</RsvatnId>'
+            f'<ValSet>'
+            f'<Amt><AmtWthCcy Ccy="{source_currency_val}">{source_amount_val}</AmtWthCcy></Amt>'
+            f'</ValSet>'
+            f'</CretRsvatn></Document>'
         )
         
         # Event 3: Source SAP validates FXP and locks source-currency funds
@@ -1018,7 +1075,7 @@ async def process_pacs008(
                 "message": f"camt.103 CreateReservation → Source SAP ({source_sap_bic}) locks {source_currency_val} {source_amount_val} on FXP nostro"
             },
             camt103_xml=source_camt103_xml
-        )
+        , correlation_id=correlation_id)
         
         # Dest leg
         dest_amount = validation.quote_data.get("dest_amount") or parsed.get("instructedAmount") or parsed.get("settlementAmount") or "0"
@@ -1027,14 +1084,18 @@ async def process_pacs008(
         
         # Build camt.103 XML for Dest SAP
         dest_camt103_xml = (
-            f'<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.103.001.02">'
-            f'<CreateRsvatn>'
-            f'<MsgId>{validation.uetr}-DSAP</MsgId>'
-            f'<RsvatnId><Id>{validation.uetr}-DSAP-RES</Id></RsvatnId>'
-            f'<Amt Ccy="{dest_currency}">{dest_amount}</Amt>'
+            f'<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.103.001.03">'
+            f'<CretRsvatn>'
+            f'<MsgHdr><MsgId>{validation.uetr}-DSAP</MsgId><CreDtTm>{now}</CreDtTm></MsgHdr>'
+            f'<RsvatnId>'
+            f'<RsvatnId>{validation.uetr}-DSAP-RES</RsvatnId>'
+            f'<Tp><Cd>CARE</Cd></Tp>'
             f'<AcctOwnr><FinInstnId><BICFI>{dest_sap}</BICFI></FinInstnId></AcctOwnr>'
-            f'<StsRsn>Dest SAP: FXP nostro reservation for Nexus settlement</StsRsn>'
-            f'</CreateRsvatn></Document>'
+            f'</RsvatnId>'
+            f'<ValSet>'
+            f'<Amt><AmtWthCcy Ccy="{dest_currency}">{dest_amount}</AmtWthCcy></Amt>'
+            f'</ValSet>'
+            f'</CretRsvatn></Document>'
         )
         
         reservation_id = await create_reservation_for_payment(
@@ -1066,7 +1127,7 @@ async def process_pacs008(
                     "message": f"camt.103 CreateReservation → Dest SAP ({dest_sap}) locks {dest_currency} {dest_amount} on FXP nostro"
                 },
                 camt103_xml=dest_camt103_xml
-            )
+            , correlation_id=correlation_id)
         else:
             await store_payment_event(
                 db=db,
@@ -1078,7 +1139,7 @@ async def process_pacs008(
                     "sapBic": dest_sap,
                     "fxpId": validation.quote_data["fxp_id"]
                 }
-            )
+            , correlation_id=correlation_id)
     
     # Check for NexusOrgnlUETR
     original_uetr = None
@@ -1098,7 +1159,7 @@ async def process_pacs008(
                     "message": f"Return payment linked to original payment {original_uetr}",
                     "nexusOrgnlUetrFound": True
                 }
-            )
+            , correlation_id=correlation_id)
     
     # Transformation Logic
     if validation.quote_data:
@@ -1119,7 +1180,8 @@ async def process_pacs008(
         uetr=validation.uetr,
         status_code="ACCC",
         settlement_amount=parsed.get("settlementAmount"),
-        settlement_currency=parsed.get("settlementCurrency")
+        settlement_currency=parsed.get("settlementCurrency"),
+        debtor_agent_bic=parsed.get("debtorAgentBic")
     )
     
     camt054_xml = build_camt054(
@@ -1129,6 +1191,35 @@ async def process_pacs008(
         debtor_name=parsed.get("debtorName", "Demo Sender"),
         creditor_name=parsed.get("creditorName", "Demo Recipient")
     )
+    
+    # Event 4.5: Nexus validates FXP quote (§16.5)
+    # PSP→FXP flow: Nexus checks quoteId, rate match, intermediary agent validity
+    if validation.quoteId:
+        fxp_id_quote = validation.quote_data.get("fxp_id", "") if validation.quote_data else ""
+        fxp_name_quote = validation.quote_data.get("fxp_name", "") if validation.quote_data else ""
+        await store_payment_event(
+            db=db,
+            uetr=validation.uetr,
+            event_type="QUOTE_VALIDATED",
+            actor="NEXUS",
+            data={
+                "step": 4.5,
+                "isoMessage": "pacs.008 (validation)",
+                "message": f"Nexus validates FXP quote: quoteId={validation.quoteId}, rate match confirmed, intermediary agents valid",
+                "quoteId": validation.quoteId,
+                "fxpId": fxp_id_quote,
+                "fxpName": fxp_name_quote,
+                "exchangeRate": parsed.get("exchangeRate"),
+                "checks": [
+                    "quote_not_expired (600s validity)",
+                    "exchange_rate_matches_quote",
+                    "intermediary_agents_belong_to_fxp",
+                    "source_sap_accounts_valid",
+                    "dest_sap_accounts_valid",
+                ],
+                "reference": "§16.5 — Quote validation checks",
+            }
+        , correlation_id=correlation_id)
     
     # Event 5: Nexus Gateway forwards pacs.008 to Dest IPS
     await store_payment_event(
@@ -1147,7 +1238,35 @@ async def process_pacs008(
         pacs008_xml=xml_content,
         pacs002_xml=pacs002_xml,
         camt054_xml=camt054_xml
-    )
+    , correlation_id=correlation_id)
+    
+    # Event 5.5: Dest IPSO receives transformed pacs.008 and routes to D-PSP
+    # Per §15.1: D-IPSO routes pacs.008 from Nexus to Dest PSP
+    # Per §15.3: D-IPSO enforces timeout (HIGH=25s, NORM=wait)
+    await store_payment_event(
+        db=db,
+        uetr=validation.uetr,
+        event_type="IPSO_FORWARDING",
+        actor="D-IPSO",
+        data={
+            "step": 5.5,
+            "leg": "DESTINATION",
+            "isoMessage": "pacs.008",
+            "message": f"Dest IPSO receives transformed pacs.008 from Nexus, routes to Dest PSP ({creditor_bic})",
+            "destPspBic": creditor_bic,
+            "ipsoDuties": [
+                "Message forwarding: route pacs.008 to D-PSP",
+                "Message translation: ISO 20022 → domestic format (if needed)",
+                "Timeout enforcement: reject if D-PSP exceeds MET",
+                "Code translation: map ISO 20022 → domestic status codes",
+            ],
+            "timeoutEnforcement": {
+                "highPriority": "Must send RJCT pacs.002 if D-PSP doesn't respond within 25s",
+                "normPriority": "Waits for D-PSP response; Nexus handles overall 4hr timeout",
+                "met": "Maximum Execution Time defined by Nexus Scheme governance",
+            },
+        }
+    , correlation_id=correlation_id)
     
     # Event 6: Dest IPS forwards to Dest PSP
     await store_payment_event(
@@ -1160,7 +1279,7 @@ async def process_pacs008(
             "message": f"Dest IPS forwards payment to Dest PSP ({creditor_bic}) for crediting",
             "destPspBic": creditor_bic,
         }
-    )
+    , correlation_id=correlation_id)
     
     # Event 7: Dest PSP credits recipient
     await store_payment_event(
@@ -1173,7 +1292,24 @@ async def process_pacs008(
             "message": f"Dest PSP ({creditor_bic}) credits recipient account",
             "creditorName": parsed.get("creditorName", "Unknown"),
         }
-    )
+    , correlation_id=correlation_id)
+    
+    # Event 7.5: D-IPS forwards positive pacs.002 to Nexus (§15.1 return flow)
+    # D-PSP → D-IPS → Nexus → S-IPS → S-PSP
+    await store_payment_event(
+        db=db,
+        uetr=validation.uetr,
+        event_type="PACS002_FORWARDED",
+        actor="D-IPS",
+        data={
+            "step": 7.5,
+            "leg": "DESTINATION",
+            "isoMessage": "pacs.002",
+            "message": f"D-IPS receives pacs.002 ACCC from D-PSP ({creditor_bic}), forwards to Nexus Gateway",
+            "status": "ACCC",
+            "destPspBic": creditor_bic,
+        }
+    , correlation_id=correlation_id)
     
     # Event 8: pacs.002 ACCC — settlement confirmed
     await store_payment_event(
@@ -1188,7 +1324,7 @@ async def process_pacs008(
             "message": "pacs.002 ACCC received — settlement confirmed",
         },
         pacs002_xml=pacs002_xml
-    )
+    , correlation_id=correlation_id)
 
     # Event 9-10: Settlement — reservations UTILIZED
     # Destination leg: debit dest-currency nostro
@@ -1227,7 +1363,7 @@ async def process_pacs008(
                 "message": f"Source SAP reservation UTILIZED — FXP source-currency nostro debited (settlement finalized)",
                 "sourceLeg": f"{source_amount_settle} {source_currency_settle} at {source_sap_bic_settle}" if source_sap_bic_settle else None,
             }
-        )
+        , correlation_id=correlation_id)
         # Event 10: Dest SAP reservation UTILIZED
         await store_payment_event(
             db=db,
@@ -1240,7 +1376,62 @@ async def process_pacs008(
                 "trigger": "pacs.002 ACCC",
                 "message": "Dest SAP reservation UTILIZED — FXP dest-currency nostro debited (settlement finalized)",
             }
-        )
+        , correlation_id=correlation_id)
+    
+    # Event 11: FXP Notification — Nexus notifies FXP of completed payment
+    # Per §16.7: After pacs.002 ACCC, Nexus sends webhook to FXP endpoint
+    fxp_id_for_notify = validation.quote_data.get("fxp_id") if validation.quote_data else None
+    if fxp_id_for_notify:
+        await store_payment_event(
+            db=db,
+            uetr=validation.uetr,
+            event_type="FXP_NOTIFIED",
+            actor="NEXUS",
+            data={
+                "step": 11,
+                "isoMessage": "webhook",
+                "message": f"Nexus notifies FXP ({fxp_id_for_notify}) of completed payment via webhook",
+                "fxpId": fxp_id_for_notify,
+                "quoteId": validation.quoteId,
+                "sourceAmount": str(parsed.get("settlementAmount", "0")),
+                "sourceCurrency": parsed.get("settlementCurrency", "USD"),
+                "destAmount": str(parsed.get("instructedAmount", "0")),
+                "destCurrency": parsed.get("instructedCurrency", "XXX"),
+                "exchangeRate": parsed.get("exchangeRate"),
+            }
+        , correlation_id=correlation_id)
+    
+    # Event 8.5: S-IPS forwards pacs.002 back to S-PSP (§15.1 return flow)
+    await store_payment_event(
+        db=db,
+        uetr=validation.uetr,
+        event_type="PACS002_DELIVERED",
+        actor="S-IPS",
+        data={
+            "step": 8.5,
+            "leg": "SOURCE",
+            "isoMessage": "pacs.002",
+            "message": f"S-IPS forwards pacs.002 ACCC to Source PSP ({debtor_bic}) — sender notified of successful payment",
+            "status": "ACCC",
+            "sourcePspBic": debtor_bic,
+        }
+    , correlation_id=correlation_id)
+    
+    # Event 12: Reconciliation — IPSO generates camt.054 (§15.2, §14.1)
+    await store_payment_event(
+        db=db,
+        uetr=validation.uetr,
+        event_type="RECONCILIATION_GENERATED",
+        actor="NEXUS",
+        data={
+            "step": 12,
+            "isoMessage": "camt.054",
+            "message": "Reconciliation report generated — camt.054 available for PSP and IPS daily reporting",
+            "reportType": "BkToCstmrDbtCdtNtfctn",
+            "availableFor": ["Source PSP", "Dest PSP", "Source IPS", "Dest IPS"],
+            "reference": "§14.1 — Daily camt.054 reports with all ACCC/RJCT/BLCK transactions",
+        }
+    , correlation_id=correlation_id)
     # Trigger callback delivery for accepted payment
     # This implements the callback mechanism per Nexus specification
     if pacs002_endpoint:

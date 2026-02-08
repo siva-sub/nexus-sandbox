@@ -152,7 +152,7 @@ export function InteractiveDemo() {
                 proxyType: "MBNO",
                 proxyValue: "+6281234567890"
             });
-            setResolution({ recipientName: res.beneficiaryName || res.displayName || "Budi Santoso", recipientPsp: res.bankName || "Bank Mandiri" });
+            setResolution({ recipientName: res.beneficiaryName || res.displayName || "Budi Santoso", recipientPsp: res.bankName || "Bank Mandiri", resolutionId: res.resolutionId });
 
             // Step 3-4: Get quotes (SG → ID corridor)
             const quotesRes = await getQuotes("SG", "SGD", "ID", "IDR", 100000, "DESTINATION");
@@ -191,6 +191,7 @@ export function InteractiveDemo() {
                 creditorAccount: "+6281234567890",
                 creditorAgentBic: "BMRIIDJA",
                 scenarioCode: scenario !== "happy" ? scenario : undefined,
+                correlationId: res.resolutionId,  // Link with proxy resolution (acmt.023/acmt.024)
             };
 
             const response = await submitPacs008(pacs008Params);
@@ -255,7 +256,7 @@ export function InteractiveDemo() {
     const [quotes, setQuotes] = useState<Quote[]>([]);
     const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
     const [ptd, setPtd] = useState<FeeBreakdown | null>(null);
-    const [resolution, setResolution] = useState<{ recipientName?: string; recipientPsp?: string } | null>(null);
+    const [resolution, setResolution] = useState<{ recipientName?: string; recipientPsp?: string; resolutionId?: string } | null>(null);
     const [paymentResult, setPaymentResult] = useState<{ uetr: string; status: string; error?: string } | null>(null);
 
     // Countdown for quote
@@ -284,7 +285,7 @@ export function InteractiveDemo() {
                 proxyType,
                 proxyValue
             });
-            setResolution({ recipientName: res.beneficiaryName || res.displayName || "Demo Recipient", recipientPsp: res.bankName });
+            setResolution({ recipientName: res.beneficiaryName || res.displayName || "Demo Recipient", recipientPsp: res.bankName, resolutionId: res.resolutionId });
 
             // Then get quotes - use currencies from selected countries
             const sourceCurrency = sourceCountryData?.currencies?.[0]?.currencyCode || "SGD";
@@ -425,6 +426,7 @@ export function InteractiveDemo() {
                 intermediaryAgent1Bic: routing.intermediaryAgent1?.bic,
                 intermediaryAgent2Bic: routing.intermediaryAgent2?.bic,
                 scenarioCode: scenario !== "happy" ? scenario : undefined,
+                correlationId: resolution?.resolutionId,  // Link with proxy resolution (acmt.023/acmt.024)
             };
 
             // Submit real pacs.008 to backend
@@ -838,29 +840,64 @@ export function InteractiveDemo() {
       <MsgId>NEXUS-${Date.now()}</MsgId>
       <CreDtTm>${new Date().toISOString()}</CreDtTm>
       <NbOfTxs>1</NbOfTxs>
+      <SttlmInf>
+        <SttlmMtd>CLRG</SttlmMtd>
+        <ClrSys><Prtry>NEXUS</Prtry></ClrSys>
+      </SttlmInf>
     </GrpHdr>
     <CdtTrfTxInf>
       <PmtId>
-        <InstrId>${selectedQuote?.quoteId ?? 'QUOTE-ID'}</InstrId>
+        <InstrId>INSTR-${Date.now()}</InstrId>
         <EndToEndId>E2E-${Date.now()}</EndToEndId>
         <TxId>TX-${Date.now()}</TxId>
+        <UETR>${(crypto as any).randomUUID ? (crypto as any).randomUUID() : `UETR-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`}</UETR>
       </PmtId>
       <PmtTpInf>
-        <ClrSys><Prtry>FAST</Prtry></ClrSys>
+        <InstrPrty>NORM</InstrPrty>
       </PmtTpInf>
       <IntrBkSttlmAmt Ccy="${ptd?.sourceCurrency ?? 'SGD'}">${ptd?.senderPrincipal ?? '0.00'}</IntrBkSttlmAmt>
+      <IntrBkSttlmDt>${new Date().toISOString().split('T')[0]}</IntrBkSttlmDt>
       <AddtlDtTm>
         <AccptncDtTm>${new Date().toISOString()}</AccptncDtTm>
       </AddtlDtTm>
+      <InstdAmt Ccy="${ptd?.destinationCurrency ?? 'THB'}">${ptd?.recipientNetAmount ?? '0.00'}</InstdAmt>
       <XchgRate>${selectedQuote?.exchangeRate ?? '1.0000'}</XchgRate>
       <ChrgBr>SHAR</ChrgBr>
+      <!-- ChrgsInf: Source PSP Deducted Fee -->
+      <ChrgsInf>
+        <Amt Ccy="${ptd?.sourceCurrency ?? 'SGD'}">${ptd?.sourcePspFee ?? '1.50'}</Amt>
+        <Agt><FinInstnId><BICFI>DBSSSGSG</BICFI></FinInstnId></Agt>
+      </ChrgsInf>
+      <!-- ChrgsInf: Destination PSP Deducted Fee -->
+      <ChrgsInf>
+        <Amt Ccy="${ptd?.destinationCurrency ?? 'THB'}">${ptd?.destinationPspFee ?? '25.00'}</Amt>
+        <Agt><FinInstnId><BICFI>${resolution?.recipientPsp || DEFAULT_PSP_BIC[destCountry] || "BMRIIDJA"}</BICFI></FinInstnId></Agt>
+      </ChrgsInf>
+      <!-- InstgAgt: Source PSP (Instructing Agent) -->
+      <InstgAgt><FinInstnId><BICFI>DBSSSGSG</BICFI></FinInstnId></InstgAgt>
+      <!-- InstdAgt: Source SAP (Instructed Agent) -->
+      <InstdAgt><FinInstnId><BICFI>OCBCSGSG</BICFI></FinInstnId></InstdAgt>
       <Dbtr><Nm>Demo Sender</Nm></Dbtr>
       <DbtrAcct><Id><Othr><Id>SG1234567890</Id></Othr></Id></DbtrAcct>
       <DbtrAgt><FinInstnId><BICFI>DBSSSGSG</BICFI></FinInstnId></DbtrAgt>
-      <IntrmyAgt1><FinInstnId><BICFI>DBSSSGSG</BICFI></FinInstnId></IntrmyAgt1>
+      <!-- IntrmyAgt1: Source SAP + FXP Account -->
+      <IntrmyAgt1><FinInstnId><BICFI>OCBCSGSG</BICFI></FinInstnId></IntrmyAgt1>
+      <IntrmyAgt1Acct><Id><Othr><Id>FXP-NOSTRO-SRC</Id></Othr></Id></IntrmyAgt1Acct>
+      <!-- IntrmyAgt2: Dest SAP + FXP Account -->
+      <IntrmyAgt2><FinInstnId><BICFI>BKKBTHBK</BICFI></FinInstnId></IntrmyAgt2>
+      <IntrmyAgt2Acct><Id><Othr><Id>FXP-NOSTRO-DST</Id></Othr></Id></IntrmyAgt2Acct>
       <CdtrAgt><FinInstnId><BICFI>${resolution?.recipientPsp || DEFAULT_PSP_BIC[destCountry] || "BMRIIDJA"}</BICFI></FinInstnId></CdtrAgt>
       <Cdtr><Nm>${resolution?.recipientName || "Demo Recipient"}</Nm></Cdtr>
       <CdtrAcct><Id><Othr><Id>${proxyValue}</Id></Othr></Id></CdtrAcct>
+      <Purp><Cd>CASH</Cd></Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>BOTH</DbtCdtRptgInd>
+        <Authrty><Nm>NEXUS</Nm></Authrty>
+        <Dtls>
+          <Cd>QREF</Cd>
+          <Inf>${selectedQuote?.quoteId ?? 'QUOTE-ID'}</Inf>
+        </Dtls>
+      </RgltryRptg>
     </CdtTrfTxInf>
   </FIToFICstmrCdtTrf>
 </Document>`}
@@ -905,7 +942,9 @@ export function InteractiveDemo() {
                                             {paymentResult.uetr}
                                         </Code>
                                         <Button
-                                            onClick={() => navigate(`/explorer?uetr=${paymentResult.uetr}`)}
+                                            onClick={() => navigate(resolution?.resolutionId
+                                                ? `/explorer?uetr=${paymentResult.uetr}&correlation_id=${resolution.resolutionId}`
+                                                : `/explorer?uetr=${paymentResult.uetr}`)}
                                             variant="light"
                                             size="xs"
                                             mt="sm"
@@ -1023,7 +1062,9 @@ export function InteractiveDemo() {
                                             {paymentResult.uetr}
                                         </Code>
                                         <Button
-                                            onClick={() => navigate(`/explorer?uetr=${paymentResult.uetr}`)}
+                                            onClick={() => navigate(resolution?.resolutionId
+                                                ? `/explorer?uetr=${paymentResult.uetr}&correlation_id=${resolution.resolutionId}`
+                                                : `/explorer?uetr=${paymentResult.uetr}`)}
                                             variant="light"
                                             size="xs"
                                             mt="sm"

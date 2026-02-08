@@ -10,6 +10,23 @@ from sqlalchemy import text
 from decimal import Decimal
 from typing import Optional
 import json
+import uuid as _uuid
+
+
+def _valid_uuid(val: Optional[str]) -> Optional[str]:
+    """Return *val* unchanged if it is a valid UUID, else None.
+    
+    The payments.quote_id column is UUID typed. Per Nexus spec, quote_id 
+    is optional (absent when Source PSP provides own FX). This guard 
+    prevents Postgres DataError when the parser yields a non-UUID value.
+    """
+    if not val:
+        return None
+    try:
+        _uuid.UUID(val)
+        return val
+    except (ValueError, AttributeError):
+        return None
 
 
 async def store_payment(
@@ -48,7 +65,7 @@ async def store_payment(
     
     await db.execute(query, {
         "uetr": uetr,
-        "quote_id": quote_id,
+        "quote_id": _valid_uuid(quote_id),
         "source_psp_bic": source_psp_bic or "MOCKPSGSG",
         "destination_psp_bic": destination_psp_bic or "MOCKTHBK",
         "debtor_name": debtor_name or "Demo Sender",
@@ -80,7 +97,8 @@ async def store_payment_event(
     pacs004_xml: str = None,
     pacs028_xml: str = None,
     camt056_xml: str = None,
-    camt029_xml: str = None
+    camt029_xml: str = None,
+    correlation_id: str = None
 ):
     """Store payment event with actor details and optional ISO 20022 messages."""
     query = text("""
@@ -88,12 +106,14 @@ async def store_payment_event(
             event_id, uetr, event_type, actor, data, version, occurred_at,
             pacs008_message, pacs002_message, acmt023_message, acmt024_message,
             camt054_message, camt103_message, pain001_message,
-            pacs004_message, pacs028_message, camt056_message, camt029_message
+            pacs004_message, pacs028_message, camt056_message, camt029_message,
+            correlation_id
         ) VALUES (
             gen_random_uuid(), :uetr, :event_type, :actor, :data, 1, NOW(),
             :pacs008_message, :pacs002_message, :acmt023_message, :acmt024_message,
             :camt054_message, :camt103_message, :pain001_message,
-            :pacs004_message, :pacs028_message, :camt056_message, :camt029_message
+            :pacs004_message, :pacs028_message, :camt056_message, :camt029_message,
+            :correlation_id
         )
     """)
     
@@ -113,5 +133,6 @@ async def store_payment_event(
         "pacs028_message": pacs028_xml,
         "camt056_message": camt056_xml,
         "camt029_message": camt029_xml,
+        "correlation_id": _valid_uuid(correlation_id),
     })
     await db.commit()

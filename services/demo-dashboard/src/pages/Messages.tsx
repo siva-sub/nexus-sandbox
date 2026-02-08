@@ -45,7 +45,7 @@ const ISO_TEMPLATES: Record<string, IsoMessageTemplate> = {
     name: "Identification Verification Request",
     description: "Proxy resolution request sent to PDO",
     sample: `<?xml version="1.0" encoding="UTF-8"?>
-<Document xmlns="urn:iso:std:iso:20022:tech:xsd:acmt.023.001.03">
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:acmt.023.001.04">
   <IdVrfctnReq>
     <Assgnmt>
       <MsgId>ACMT023-2026-0203-001</MsgId>
@@ -72,8 +72,15 @@ const ISO_TEMPLATES: Record<string, IsoMessageTemplate> = {
       </Assgne>
     </Assgnmt>
     <Vrfctn>
-      <Id>+66812345678</Id>
-      <Tp>MOBL</Tp>
+      <Id>RESOLVE-001</Id>
+      <PtyAndAcctId>
+        <Acct>
+          <Prxy>
+            <Tp><Cd>MBNO</Cd></Tp>
+            <Id>+66812345678</Id>
+          </Prxy>
+        </Acct>
+      </PtyAndAcctId>
     </Vrfctn>
   </IdVrfctnReq>
 </Document>`,
@@ -83,7 +90,7 @@ const ISO_TEMPLATES: Record<string, IsoMessageTemplate> = {
     name: "Identification Verification Report",
     description: "Proxy resolution response from PDO",
     sample: `<?xml version="1.0" encoding="UTF-8"?>
-<Document xmlns="urn:iso:std:iso:20022:tech:xsd:acmt.024.001.03">
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:acmt.024.001.04">
   <IdVrfctnRpt>
     <Assgnmt>
       <MsgId>ACMT024-2026-0203-001</MsgId>
@@ -115,7 +122,7 @@ const ISO_TEMPLATES: Record<string, IsoMessageTemplate> = {
       <CreDtTm>2026-02-03T10:30:05Z</CreDtTm>
       <NbOfTxs>1</NbOfTxs>
       <SttlmInf>
-        <SttlmMtd>INGA</SttlmMtd>
+        <SttlmMtd>CLRG</SttlmMtd>
       </SttlmInf>
     </GrpHdr>
     <CdtTrfTxInf>
@@ -124,6 +131,12 @@ const ISO_TEMPLATES: Record<string, IsoMessageTemplate> = {
         <TxId>TXN-2026-0203-001</TxId>
       </PmtId>
       <IntrBkSttlmAmt Ccy="THB">26452.10</IntrBkSttlmAmt>
+      <IntrBkSttlmDt>2026-02-03</IntrBkSttlmDt>
+      <AddtlDtTm>
+        <AccptncDtTm>2026-02-03T09:30:00Z</AccptncDtTm>
+      </AddtlDtTm>
+      <InstdAmt Ccy="SGD">1000.00</InstdAmt>
+      <XchgRate>26.4521</XchgRate>
       <ChrgBr>SHAR</ChrgBr>
       <Dbtr>
         <Nm>JOHN DOE</Nm>
@@ -150,13 +163,14 @@ const ISO_TEMPLATES: Record<string, IsoMessageTemplate> = {
     name: "Payment Status Report",
     description: "Payment confirmation/rejection status",
     sample: `<?xml version="1.0" encoding="UTF-8"?>
-<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.002.001.10">
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.002.001.15">
   <FIToFIPmtStsRpt>
     <GrpHdr>
       <MsgId>PACS002-2026-0203-001</MsgId>
       <CreDtTm>2026-02-03T10:30:10Z</CreDtTm>
     </GrpHdr>
     <TxInfAndSts>
+      <OrgnlInstrId>INSTR-2026-0203-001</OrgnlInstrId>
       <OrgnlEndToEndId>E2E-2026-0203-001</OrgnlEndToEndId>
       <OrgnlTxId>TXN-2026-0203-001</OrgnlTxId>
       <TxSts>ACCC</TxSts>
@@ -176,7 +190,7 @@ const ISO_TEMPLATES: Record<string, IsoMessageTemplate> = {
     name: "FI To FI Payment Status Request",
     description: "Status enquiry for a transaction",
     sample: `<?xml version="1.0" encoding="UTF-8"?>
-<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.028.001.05">
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.028.001.06">
   <FIToFIPmtStsReq>
     <GrpHdr>
       <MsgId>QRY20260204-01</MsgId>
@@ -194,18 +208,28 @@ const ISO_TEMPLATES: Record<string, IsoMessageTemplate> = {
     name: "FI To FI Payment Cancellation Request",
     description: "Request to cancel an incorrect payment",
     sample: `<?xml version="1.0" encoding="UTF-8"?>
-<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.056.001.10">
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.056.001.11">
   <FIToFIPmtCxlReq>
-    <GrpHdr>
-      <MsgId>RCL20260204-01</MsgId>
+    <Assgnmt>
+      <Id>RCL20260204-01</Id>
+      <Assgnr>
+        <Pty>
+          <Nm>Source PSP</Nm>
+        </Pty>
+      </Assgnr>
+      <Assgne>
+        <Pty>
+          <Nm>Nexus Gateway</Nm>
+        </Pty>
+      </Assgne>
       <CreDtTm>2026-02-04T19:00:00Z</CreDtTm>
-    </GrpHdr>
-    <Underlyg>
+    </Assgnmt>
+    <Undrlyg>
       <TxInf>
         <OrgnlUETR>91398cbd-0838-453f-b2c7-536e829f2b8e</OrgnlUETR>
         <CxlRsnInf><Rsn><Cd>DUPL</Cd></Rsn></CxlRsnInf>
       </TxInf>
-    </Underlyg>
+    </Undrlyg>
   </FIToFIPmtCxlReq>
 </Document>`,
   },
@@ -214,19 +238,31 @@ const ISO_TEMPLATES: Record<string, IsoMessageTemplate> = {
     name: "Resolution Of Investigation",
     description: "Response to a cancellation request",
     sample: `<?xml version="1.0" encoding="UTF-8"?>
-<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.029.001.11">
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.029.001.13">
   <RsltnOfInvstgtn>
     <Assgnmt>
-      <MsgId>RSP20260204-01</MsgId>
+      <Id>RSP20260204-01</Id>
+      <Assgnr>
+        <Pty>
+          <Nm>Nexus Gateway</Nm>
+        </Pty>
+      </Assgnr>
+      <Assgne>
+        <Pty>
+          <Nm>Source PSP</Nm>
+        </Pty>
+      </Assgne>
       <CreDtTm>2026-02-04T19:15:00Z</CreDtTm>
     </Assgnmt>
     <Sts><Conf>RJCR</Conf></Sts>
-    <CxlDetails>
+    <CxlDtls>
       <TxInfAndSts>
+        <CxlStsRsnInf>
+          <Rsn><Cd>RJCR</Cd></Rsn>
+        </CxlStsRsnInf>
         <OrgnlUETR>91398cbd-0838-453f-b2c7-536e829f2b8e</OrgnlUETR>
-        <CxlStsId>RJCR</CxlStsId>
       </TxInfAndSts>
-    </CxlDetails>
+    </CxlDtls>
   </RsltnOfInvstgtn>
 </Document>`,
   },
@@ -235,7 +271,7 @@ const ISO_TEMPLATES: Record<string, IsoMessageTemplate> = {
     name: "Bank to Customer Debit/Credit Notification",
     description: "Reconciliation report for IPS Operators",
     sample: `<?xml version="1.0" encoding="UTF-8"?>
-<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.054.001.08">
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.054.001.13">
   <BkToCstmrDbtCdtNtfctn>
     <GrpHdr>
       <MsgId>RECON-20260204</MsgId>
@@ -246,7 +282,10 @@ const ISO_TEMPLATES: Record<string, IsoMessageTemplate> = {
       <CreDtTm>2026-02-04T23:59:59Z</CreDtTm>
       <Ntry>
         <Amt Ccy="SGD">1000.00</Amt>
-        <Sts>BOOK</Sts>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts><Cd>BOOK</Cd></Sts>
+        <BookgDt><Dt>2026-02-04</Dt></BookgDt>
+        <ValDt><Dt>2026-02-04</Dt></ValDt>
         <BkTxCd>
           <Domn>
             <Cd>PMNT</Cd>
@@ -265,15 +304,20 @@ const ISO_TEMPLATES: Record<string, IsoMessageTemplate> = {
     sample: `<?xml version="1.0" encoding="UTF-8"?>
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.103.001.03">
   <CretRsvatn>
-    <GrpHdr>
+    <MsgHdr>
       <MsgId>RSV20260204-001</MsgId>
       <CreDtTm>2026-02-04T18:00:02Z</CreDtTm>
-    </GrpHdr>
-    <RsvatnId>RSV-TX-001</RsvatnId>
-    <CurRsvatn>
-      <Amt Ccy="THB">25000.00</Amt>
-      <Tp><Cd>AVLB</Cd></Tp>
-    </CurRsvatn>
+    </MsgHdr>
+    <RsvatnId>
+      <Tp>
+        <Cd>THRE</Cd>
+      </Tp>
+    </RsvatnId>
+    <ValSet>
+      <Amt>
+        <AmtWthCcy Ccy="SGD">25000.00</AmtWthCcy>
+      </Amt>
+    </ValSet>
   </CretRsvatn>
 </Document>`,
   },
@@ -282,7 +326,7 @@ const ISO_TEMPLATES: Record<string, IsoMessageTemplate> = {
     name: "Customer Credit Transfer Initiation",
     description: "Payment initiation request (Method 3)",
     sample: `<?xml version="1.0" encoding="UTF-8"?>
-<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.11">
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.12">
   <CstmrCdtTrfInitn>
     <GrpHdr>
       <MsgId>INIT20260204-123</MsgId>
@@ -293,10 +337,19 @@ const ISO_TEMPLATES: Record<string, IsoMessageTemplate> = {
     <PmtInf>
       <PmtInfId>P-INIT-01</PmtInfId>
       <PmtMtd>TRF</PmtMtd>
+      <ReqdExctnDt><Dt>2026-02-04</Dt></ReqdExctnDt>
       <Dbtr><Nm>FXP ALPHA</Nm></Dbtr>
+      <DbtrAcct>
+        <Id><Othr><Id>FX-ACCT-777</Id></Othr></Id>
+      </DbtrAcct>
+      <DbtrAgt><FinInstnId><BICFI>OCBCSGSG</BICFI></FinInstnId></DbtrAgt>
       <CdtTrfTxInf>
         <PmtId><EndToEndId>E2E-01</EndToEndId></PmtId>
         <Amt><InstdAmt Ccy="THB">25000.00</InstdAmt></Amt>
+        <Cdtr><Nm>Jane Smith</Nm></Cdtr>
+        <CdtrAcct>
+          <Id><Othr><Id>0987654321</Id></Othr></Id>
+        </CdtrAcct>
       </CdtTrfTxInf>
     </PmtInf>
   </CstmrCdtTrfInitn>
@@ -307,11 +360,15 @@ const ISO_TEMPLATES: Record<string, IsoMessageTemplate> = {
     name: "Payment Return",
     description: "Return of funds (reversal)",
     sample: `<?xml version="1.0" encoding="UTF-8"?>
-<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.004.001.11">
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.004.001.14">
   <PmtRtr>
     <GrpHdr>
       <MsgId>RET20260204-001</MsgId>
       <CreDtTm>2026-02-04T18:30:00Z</CreDtTm>
+      <NbOfTxs>1</NbOfTxs>
+      <SttlmInf>
+        <SttlmMtd>CLRG</SttlmMtd>
+      </SttlmInf>
     </GrpHdr>
     <TxInf>
       <RtrId>RTR-01</RtrId>

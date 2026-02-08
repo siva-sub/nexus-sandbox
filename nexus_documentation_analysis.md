@@ -220,7 +220,9 @@ Step  Nexus Gateway  Dest IPS    Dest SAP    Dest PSP    Recipient
       </PmtId>
       <IntrBkSttlmAmt Ccy="">  <!-- Interbank Settlement Amount -->
       <IntrBkSttlmDt>          <!-- Interbank Settlement Date -->
-      <AccptncDtTm>            <!-- Acceptance Date Time (UTC) -->
+      <AddtlDtTm>
+        <AccptncDtTm>          <!-- Acceptance Date Time (UTC) -->
+      </AddtlDtTm>
       <ChrgBr>SHA_R</ChrgBr>   <!-- Charge Bearer (always SHA_R) -->
       <ChrgsInf>               <!-- Charges Information (2 iterations) -->
         <Amt Ccy="">           <!-- Source PSP Deducted Fee -->

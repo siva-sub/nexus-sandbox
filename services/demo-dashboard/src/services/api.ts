@@ -267,8 +267,16 @@ export interface Pacs008Params {
     instructionPriority?: "HIGH" | "NORM";  // InstrPrty - HIGH (25s) or NORM (4hr)
     clearingSystemCode?: string;  // ClrSys - e.g., "SGFAST", "THBRT"
     intermediaryAgent1Bic?: string;  // IntrmyAgt1 - Source SAP BIC
+    intermediaryAgent1Account?: string;  // IntrmyAgt1Acct - FXP account at Source SAP
     intermediaryAgent2Bic?: string;  // IntrmyAgt2 - Destination SAP BIC
+    intermediaryAgent2Account?: string;  // IntrmyAgt2Acct - FXP account at Dest SAP
     paymentReference?: string;  // RmtInf/Strd/CdtrRefInf/Ref - Sender message
+    // Fee fields per Nexus spec §4.3 (two ChrgsInf iterations mandatory)
+    sourcePspFee?: number;  // Source PSP Deducted Fee (source currency)
+    destPspFee?: number;  // Destination PSP Deducted Fee (dest currency)
+    purposeCode?: string;  // Purp/Cd - Payment purpose code (e.g. CASH, SALA)
+    // Proxy resolution correlation ID (links acmt.023/acmt.024 to payment)
+    correlationId?: string;  // From proxy resolution for full message flow in explorer
     // For scenario injection (demo purposes)
     scenarioCode?: string;
 }
@@ -320,11 +328,10 @@ function buildPacs008Xml(params: Pacs008Params): string {
     const endToEndId = `E2E${Date.now()}`;
 
     // Use provided values or generate defaults
-    const acceptanceDateTime = params.acceptanceDateTime || now;
     const instructionPriority = params.instructionPriority || "NORM";
-    const clearingSystemCode = params.clearingSystemCode || "NGP";
+    const clearingSystemCode = params.clearingSystemCode || "NEXUS";
 
-    // Build intermediary agents XML if provided
+    // Build intermediary agents XML if provided (with FXP account numbers per §2.2)
     let intermediaryAgentsXml = "";
     if (params.intermediaryAgent1Bic) {
         intermediaryAgentsXml += `
@@ -332,7 +339,10 @@ function buildPacs008Xml(params: Pacs008Params): string {
         <FinInstnId>
           <BICFI>${escapeXml(params.intermediaryAgent1Bic)}</BICFI>
         </FinInstnId>
-      </IntrmyAgt1>`;
+      </IntrmyAgt1>${params.intermediaryAgent1Account ? `
+      <IntrmyAgt1Acct>
+        <Id><Othr><Id>${escapeXml(params.intermediaryAgent1Account)}</Id></Othr></Id>
+      </IntrmyAgt1Acct>` : ""}`;
     }
     if (params.intermediaryAgent2Bic) {
         intermediaryAgentsXml += `
@@ -340,7 +350,10 @@ function buildPacs008Xml(params: Pacs008Params): string {
         <FinInstnId>
           <BICFI>${escapeXml(params.intermediaryAgent2Bic)}</BICFI>
         </FinInstnId>
-      </IntrmyAgt2>`;
+      </IntrmyAgt2>${params.intermediaryAgent2Account ? `
+      <IntrmyAgt2Acct>
+        <Id><Othr><Id>${escapeXml(params.intermediaryAgent2Account)}</Id></Othr></Id>
+      </IntrmyAgt2Acct>` : ""}`;
     }
 
     // Build payment reference (remittance info) if provided
@@ -356,9 +369,10 @@ function buildPacs008Xml(params: Pacs008Params): string {
       </RmtInf>`;
     }
 
-    // Element order follows XSD CreditTransferTransaction70:
-    // PmtId → IntrBkSttlmAmt → IntrBkSttlmDt → InstdAmt → XchgRate → AgrdRate → ChrgBr 
-    //   → Dbtr → DbtrAcct → DbtrAgt → IntrmyAgt1 → IntrmyAgt2 → CdtrAgt → Cdtr → CdtrAcct → RmtInf
+    // Element order follows XSD CreditTransferTransaction70 (pacs.008.001.13):
+    // PmtId → PmtTpInf → IntrBkSttlmAmt → IntrBkSttlmDt → AddtlDtTm → InstdAmt → XchgRate
+    //   → InstdAmt → XchgRate → ChrgBr → Dbtr → DbtrAcct → DbtrAgt
+    //   → IntrmyAgt1 → IntrmyAgt2 → CdtrAgt → Cdtr → CdtrAcct → RgltryRptg → RmtInf
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.008.001.13">
   <FIToFICstmrCdtTrf>
@@ -369,14 +383,15 @@ function buildPacs008Xml(params: Pacs008Params): string {
       <SttlmInf>
         <SttlmMtd>CLRG</SttlmMtd>${clearingSystemCode ? `
         <ClrSys>
-          <Cd>${escapeXml(clearingSystemCode)}</Cd>
-        </ClrSys>` : ""}
+           <Prtry>${escapeXml(clearingSystemCode)}</Prtry>
+         </ClrSys>` : ""}
       </SttlmInf>
     </GrpHdr>
     <CdtTrfTxInf>
       <PmtId>
         <InstrId>INSTR-${Date.now()}</InstrId>
         <EndToEndId>${endToEndId}</EndToEndId>
+        <TxId>TX-${Date.now()}</TxId>
         <UETR>${escapeXml(params.uetr)}</UETR>
       </PmtId>
       <PmtTpInf>
@@ -385,11 +400,29 @@ function buildPacs008Xml(params: Pacs008Params): string {
       <IntrBkSttlmAmt Ccy="${escapeXml(params.sourceCurrency)}">${params.sourceAmount.toFixed(2)}</IntrBkSttlmAmt>
       <IntrBkSttlmDt>${now.split('T')[0]}</IntrBkSttlmDt>
       <AddtlDtTm>
-        <AccptncDtTm>${acceptanceDateTime}</AccptncDtTm>
+        <AccptncDtTm>${now}</AccptncDtTm>
       </AddtlDtTm>
       <InstdAmt Ccy="${escapeXml(params.destinationCurrency)}">${params.destinationAmount.toFixed(2)}</InstdAmt>
       <XchgRate>${params.exchangeRate}</XchgRate>
-      <ChrgBr>SHAR</ChrgBr>
+      <ChrgBr>SHAR</ChrgBr>${params.sourcePspFee != null ? `
+      <ChrgsInf>
+        <Amt Ccy="${escapeXml(params.sourceCurrency)}">${params.sourcePspFee.toFixed(2)}</Amt>
+        <Agt><FinInstnId><BICFI>${escapeXml(params.debtorAgentBic)}</BICFI></FinInstnId></Agt>
+      </ChrgsInf>` : ""}${params.destPspFee != null ? `
+      <ChrgsInf>
+        <Amt Ccy="${escapeXml(params.destinationCurrency)}">${params.destPspFee.toFixed(2)}</Amt>
+        <Agt><FinInstnId><BICFI>${escapeXml(params.creditorAgentBic)}</BICFI></FinInstnId></Agt>
+      </ChrgsInf>` : ""}
+      <InstgAgt>
+        <FinInstnId>
+          <BICFI>${escapeXml(params.debtorAgentBic)}</BICFI>
+        </FinInstnId>
+      </InstgAgt>
+      <InstdAgt>
+        <FinInstnId>
+          <BICFI>${escapeXml(params.intermediaryAgent1Bic || params.debtorAgentBic)}</BICFI>
+        </FinInstnId>
+      </InstdAgt>
       <Dbtr>
         <Nm>${escapeXml(params.debtorName)}</Nm>
       </Dbtr>
@@ -419,15 +452,18 @@ function buildPacs008Xml(params: Pacs008Params): string {
             <Id>${escapeXml(params.creditorAccount)}</Id>
           </Othr>
         </Id>
-      </CdtrAcct>${remittanceInfoXml}
+      </CdtrAcct>${params.purposeCode ? `
+      <Purp>
+        <Cd>${escapeXml(params.purposeCode)}</Cd>
+      </Purp>` : ""}${remittanceInfoXml}
       <RgltryRptg>
         <DbtCdtRptgInd>BOTH</DbtCdtRptgInd>
         <Authrty>
           <Nm>NEXUS</Nm>
         </Authrty>
         <Dtls>
-          <Cd>NEXUS_QUOTE_ID</Cd>
-          <Inf>${escapeXml(params.quoteId)}</Inf>
+          <Cd>QREF</Cd>
+          <Inf>${escapeXml((params.quoteId || '').substring(0, 35))}</Inf>
         </Dtls>
       </RgltryRptg>
     </CdtTrfTxInf>
@@ -489,6 +525,10 @@ export async function submitPacs008(params: Pacs008Params): Promise<Pacs008Respo
     queryParams.set("pacs002Endpoint", callbackUrl);
     if (params.scenarioCode && params.scenarioCode !== "happy") {
         queryParams.set("scenarioCode", params.scenarioCode);
+    }
+    // Pass correlationId to link payment with proxy resolution (acmt.023/acmt.024) for explorer
+    if (params.correlationId) {
+        queryParams.set("correlationId", params.correlationId);
     }
 
     const response = await fetch(`${API_BASE}/v1/iso20022/pacs008?${queryParams.toString()}`, {
@@ -697,19 +737,27 @@ export async function getPaymentStatus(uetr: string) {
 }
 
 // Payment Messages API - with mock support for GitHub Pages
-export async function getPaymentMessages(uetr: string) {
+// Per Nexus spec: pass correlation_id to include addressing messages (acmt.023/acmt.024)
+export async function getPaymentMessages(uetr: string, correlationId?: string) {
     if (MOCK_ENABLED) {
         return mock.mockPaymentStore.getMessages(uetr);
     }
-    return fetchJSON<{ messages: { messageType: string; direction: string; xml: string; timestamp: string }[] }>(`/v1/payments/${uetr}/messages`);
+    const url = correlationId
+        ? `/v1/payments/${uetr}/messages?correlation_id=${correlationId}`
+        : `/v1/payments/${uetr}/messages`;
+    return fetchJSON<{ messages: { messageType: string; direction: string; xml: string; timestamp: string }[] }>(url);
 }
 
 // Payment Events API - with mock support for GitHub Pages
-export async function getPaymentEvents(uetr: string) {
+// Per Nexus spec: pass correlation_id to include addressing events (proxy resolution)
+export async function getPaymentEvents(uetr: string, correlationId?: string) {
     if (MOCK_ENABLED) {
         return mock.mockPaymentStore.getEvents(uetr);
     }
-    return fetchJSON<{ uetr: string; events: import("../types").PaymentEvent[] }>(`/v1/payments/${uetr}/events`);
+    const url = correlationId
+        ? `/v1/payments/${uetr}/events?correlation_id=${correlationId}`
+        : `/v1/payments/${uetr}/events`;
+    return fetchJSON<{ uetr: string; events: import("../types").PaymentEvent[] }>(url);
 }
 
 

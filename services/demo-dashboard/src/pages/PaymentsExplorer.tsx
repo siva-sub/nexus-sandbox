@@ -154,10 +154,12 @@ function extractReasonFromMessages(msgs: Message[]): { code: string; description
         TM01: "Timeout - Invalid Cut Off Time",
         DUPL: "Duplicate Payment Detected",
         AC01: "Incorrect Account Number",
+        AC04: "Closed Account - Recipient account is closed",
+        AM02: "Amount Limit Exceeded - Above max transfer limit",
+        AM04: "Insufficient Funds - Sender balance insufficient",
         MS02: "Not Specified Reason - Customer Generated",
-        RR04: "Regulatory Reason",
-        AM04: "Insufficient Funds",
-        BE23: "Missing Creditor Address",
+        RR04: "Regulatory Block - Transaction blocked by compliance",
+        BE23: "Invalid Proxy - Recipient identifier not found",
         RC11: "Invalid Settlement Account Provider",
         AB03: "Timeout - Transaction Aborted",
     };
@@ -165,7 +167,7 @@ function extractReasonFromMessages(msgs: Message[]): { code: string; description
     return { code, description: descriptions[code] || `Rejected (${code})` };
 }
 
-// Status code descriptions
+// Status code descriptions — full set matching backend scenario_descriptions in pacs008.py
 const STATUS_CODES: Record<string, { description: string; color: string }> = {
     ACSC: { description: "Settlement Completed", color: "green" },
     ACCC: { description: "Settlement Completed (Legacy)", color: "green" },
@@ -174,12 +176,14 @@ const STATUS_CODES: Record<string, { description: string; color: string }> = {
     PDNG: { description: "Pending", color: "yellow" },
     AB03: { description: "Timeout - Aborted", color: "orange" },
     AB04: { description: "Quote Expired", color: "orange" },
+    AM02: { description: "Amount Limit Exceeded", color: "red" },
     AM04: { description: "Insufficient Funds", color: "red" },
     TM01: { description: "Timeout - Invalid Cut Off", color: "orange" },
     DUPL: { description: "Duplicate Payment", color: "red" },
     BE23: { description: "Account Not Found", color: "red" },
     RC11: { description: "Invalid SAP", color: "red" },
     AC01: { description: "Incorrect Account Number", color: "red" },
+    AC04: { description: "Closed Account", color: "red" },
     MS02: { description: "Not Specified Reason Customer", color: "red" },
     RR04: { description: "Regulatory Reason", color: "red" },
 };
@@ -371,6 +375,7 @@ function ActorEventTimeline({ events }: { events: EventDetail[] }) {
 export function PaymentsExplorer() {
     const [searchParams] = useSearchParams();
     const [uetrInput, setUetrInput] = useState("");
+    const [correlationId, setCorrelationId] = useState<string | undefined>(undefined);
     const [loading, setLoading] = useState(false);
     const [payment, setPayment] = useState<PaymentDetails | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
@@ -378,16 +383,19 @@ export function PaymentsExplorer() {
     const [error, setError] = useState<string | null>(null);
 
     // Handle URL query param for direct linking from demo
+    // Per Nexus spec: proxy resolution uses correlation_id, payment uses UETR
     useEffect(() => {
         const uetrFromUrl = searchParams.get("uetr");
+        const correlationIdFromUrl = searchParams.get("correlation_id") || undefined;
         if (uetrFromUrl && uetrFromUrl !== uetrInput) {
             setUetrInput(uetrFromUrl);
+            setCorrelationId(correlationIdFromUrl);
             // Auto-search when UETR is provided via URL
-            searchPaymentByUetr(uetrFromUrl);
+            searchPaymentByUetr(uetrFromUrl, correlationIdFromUrl);
         }
     }, [searchParams]);
 
-    const searchPaymentByUetr = async (uetr: string) => {
+    const searchPaymentByUetr = async (uetr: string, corrId?: string) => {
         setLoading(true);
         setError(null);
         setPayment(null);
@@ -407,12 +415,14 @@ export function PaymentsExplorer() {
             setPayment(statusData as PaymentDetails);
 
             // Fetch messages using mock-enabled API
-            const msgData = await getPaymentMessages(uetr);
+            // Pass correlation_id to include addressing messages (acmt.023/acmt.024)
+            const msgData = await getPaymentMessages(uetr, corrId);
             setMessages((msgData.messages || []) as Message[]);
 
             // Fetch events (actor trail) from backend DB
+            // Pass correlation_id to include addressing events
             try {
-                const evtData = await getPaymentEvents(uetr);
+                const evtData = await getPaymentEvents(uetr, corrId);
                 setEvents((evtData.events || []) as unknown as EventDetail[]);
             } catch {
                 // Events are optional — don't fail the whole search
@@ -430,7 +440,7 @@ export function PaymentsExplorer() {
             setError("Please enter a UETR");
             return;
         }
-        await searchPaymentByUetr(uetrInput);
+        await searchPaymentByUetr(uetrInput, correlationId);
     };
 
     const getStatusInfo = (code: string) =>
@@ -449,23 +459,34 @@ export function PaymentsExplorer() {
 
                 {/* Search */}
                 <Paper shadow="xs" p="md" radius="md" withBorder>
-                    <Group>
+                    <Stack gap="sm">
+                        <Group>
+                            <TextInput
+                                placeholder="Enter UETR (e.g., f47ac10b-58cc-4372-a567-0e02b2c3d479)"
+                                value={uetrInput}
+                                onChange={(e) => setUetrInput(e.target.value)}
+                                style={{ flex: 1 }}
+                                leftSection={<IconSearch size={16} />}
+                                onKeyDown={(e) => e.key === "Enter" && searchPayment()}
+                            />
+                            <Button
+                                onClick={searchPayment}
+                                loading={loading}
+                                leftSection={<IconSearch size={16} />}
+                            >
+                                Search
+                            </Button>
+                        </Group>
+                        {/* Optional correlation ID for addressing events */}
                         <TextInput
-                            placeholder="Enter UETR (e.g., f47ac10b-58cc-4372-a567-0e02b2c3d479)"
-                            value={uetrInput}
-                            onChange={(e) => setUetrInput(e.target.value)}
-                            style={{ flex: 1 }}
-                            leftSection={<IconSearch size={16} />}
-                            onKeyDown={(e) => e.key === "Enter" && searchPayment()}
+                            placeholder="Optional: Correlation ID from proxy resolution (for acmt.023/acmt.024)"
+                            value={correlationId || ""}
+                            onChange={(e) => setCorrelationId(e.target.value || undefined)}
+                            size="xs"
+                            leftSection={<IconCode size={14} />}
+                            description="Per Nexus spec: Proxy resolution uses correlation ID, payment uses UETR"
                         />
-                        <Button
-                            onClick={searchPayment}
-                            loading={loading}
-                            leftSection={<IconSearch size={16} />}
-                        >
-                            Search
-                        </Button>
-                    </Group>
+                    </Stack>
                 </Paper>
 
                 {/* Error */}

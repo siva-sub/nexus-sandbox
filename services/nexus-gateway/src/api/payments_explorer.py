@@ -35,9 +35,17 @@ async def list_payments(
 @router.get("/payments/{uetr}/events")
 async def get_payment_events(
     uetr: str,
+    correlation_id: Optional[str] = Query(None, description="Optional correlation ID for addressing events (acmt.023/acmt.024)"),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get all events and ISO messages for a transaction."""
+    """
+    Get all events and ISO messages for a transaction.
+    
+    Per Nexus official documentation: Proxy resolution (acmt.023/acmt.024) occurs 
+    BEFORE payment initiation and uses a correlation ID, not the UETR. If you 
+    have the correlation_id from proxy resolution, pass it to see addressing events.
+    """
+    # Get payment events by UETR
     query = text("""
         SELECT * FROM payment_events 
         WHERE uetr = :uetr 
@@ -51,6 +59,24 @@ async def get_payment_events(
         if isinstance(event.get("data"), str):
             event["data"] = json.loads(event["data"])
         events.append(event)
+    
+    # If correlation_id provided, also get addressing events
+    # Per Nexus spec: addressing events are separate from payment events
+    if correlation_id:
+        addr_query = text("""
+            SELECT * FROM payment_events 
+            WHERE correlation_id = :correlation_id 
+              AND (event_type = 'ADDRESSING_REQUESTED' OR event_type = 'ADDRESSING_RESOLVED' OR event_type = 'ADDRESSING_FAILED')
+            ORDER BY occurred_at ASC
+        """)
+        addr_result = await db.execute(addr_query, {"correlation_id": correlation_id})
+        for row in addr_result.fetchall():
+            event = dict(row._mapping)
+            if isinstance(event.get("data"), str):
+                event["data"] = json.loads(event["data"])
+            # Mark as addressing event
+            event["is_addressing_event"] = True
+            events.append(event)
         
     return {"uetr": uetr, "events": events}
 
@@ -58,6 +84,7 @@ async def get_payment_events(
 @router.get("/payments/{uetr}/messages")
 async def get_payment_messages(
     uetr: str,
+    correlation_id: Optional[str] = Query(None, description="Optional correlation ID for addressing messages (acmt.023/acmt.024)"),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -65,6 +92,9 @@ async def get_payment_messages(
     
     Returns all available message types including Release 1, Optional SAP, and Future messages.
     Reference: ADR-011 - Developer Observability, ADR-013 - E2E Demo Integration
+    
+    Per Nexus official documentation: Proxy resolution (acmt.023/acmt.024) uses a 
+    correlation ID, not the UETR. Pass correlation_id to include addressing messages.
     """
     query = text("""
         SELECT event_type, occurred_at,
@@ -107,6 +137,40 @@ async def get_payment_messages(
                     "xml": msg[column],
                     "timestamp": str(msg["occurred_at"]) if msg.get("occurred_at") else None
                 })
+    
+    # If correlation_id provided, also get addressing messages (acmt.023/acmt.024)
+    # Per Nexus spec: addressing uses correlation ID, not UETR
+    if correlation_id:
+        addr_query = text("""
+            SELECT event_type, occurred_at, acmt023_message, acmt024_message
+            FROM payment_events 
+            WHERE correlation_id = :correlation_id
+              AND (event_type = 'ADDRESSING_REQUESTED' OR event_type = 'ADDRESSING_RESOLVED' OR event_type = 'ADDRESSING_FAILED')
+            ORDER BY occurred_at ASC
+        """)
+        addr_result = await db.execute(addr_query, {"correlation_id": correlation_id})
+        
+        for row in addr_result.fetchall():
+            msg = dict(row._mapping)
+            if msg.get("acmt023_message"):
+                messages.append({
+                    "messageType": "acmt.023",
+                    "direction": "outbound",
+                    "description": "Identification Verification Request (Proxy Resolution)",
+                    "xml": msg["acmt023_message"],
+                    "timestamp": str(msg["occurred_at"]) if msg.get("occurred_at") else None
+                })
+            if msg.get("acmt024_message"):
+                messages.append({
+                    "messageType": "acmt.024",
+                    "direction": "inbound",
+                    "description": "Identification Verification Report",
+                    "xml": msg["acmt024_message"],
+                    "timestamp": str(msg["occurred_at"]) if msg.get("occurred_at") else None
+                })
+    
+    # Sort all messages by timestamp
+    messages.sort(key=lambda x: x["timestamp"] or "")
     
     return {
         "uetr": uetr,
@@ -155,16 +219,18 @@ async def get_payment_status(
         payment.get("reason_code")
     )
     
-    # Reason descriptions map
+    # Reason descriptions map — full set matching pacs008.py scenario_descriptions
     reason_descriptions = {
         "AB04": "Quote Expired / Exchange Rate Mismatch",
         "TM01": "Timeout - Invalid Cut Off Time",
         "DUPL": "Duplicate Payment Detected",
         "AC01": "Incorrect Account Number",
+        "AC04": "Closed Account - Recipient account is closed",
+        "AM02": "Amount Limit Exceeded - Above max transfer limit",
+        "AM04": "Insufficient Funds - Sender balance insufficient",
         "MS02": "Not Specified Reason - Customer Generated",
-        "RR04": "Regulatory Reason",
-        "AM04": "Insufficient Funds",
-        "BE23": "Missing Creditor Address",
+        "RR04": "Regulatory Block - Transaction blocked by compliance",
+        "BE23": "Invalid Proxy - Recipient identifier not found",
         "RC11": "Invalid Settlement Account Provider",
         "AB03": "Timeout - Transaction Aborted",
     }

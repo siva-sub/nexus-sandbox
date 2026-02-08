@@ -42,11 +42,15 @@ TEMPLATES: Dict[str, Iso20022Template] = {
         <TxId>TX-001</TxId>
         <UETR>91398cbd-0838-453f-b2c7-536e829f2b8e</UETR>
       </PmtId>
+      <PmtTpInf>
+        <InstrPrty>NORM</InstrPrty>
+      </PmtTpInf>
       <IntrBkSttlmAmt Ccy="SGD">1000.00</IntrBkSttlmAmt>
       <IntrBkSttlmDt>2026-02-04</IntrBkSttlmDt>
       <AddtlDtTm>
         <AccptncDtTm>2026-02-04T18:00:00Z</AccptncDtTm>
       </AddtlDtTm>
+      <InstdAmt Ccy="THB">1345.00</InstdAmt>
       <XchgRate>1.345</XchgRate>
       <ChrgBr>SHAR</ChrgBr>
       <InstgAgt>
@@ -64,6 +68,12 @@ TEMPLATES: Dict[str, Iso20022Template] = {
       <DbtrAgt>
         <FinInstnId><BICFI>DBSSSGSG</BICFI></FinInstnId>
       </DbtrAgt>
+      <IntrmyAgt1>
+        <FinInstnId><BICFI>DBSSSGSG</BICFI></FinInstnId>
+      </IntrmyAgt1>
+      <IntrmyAgt2>
+        <FinInstnId><BICFI>KASITHBK</BICFI></FinInstnId>
+      </IntrmyAgt2>
       <CdtrAgt>
         <FinInstnId><BICFI>KASITHBK</BICFI></FinInstnId>
       </CdtrAgt>
@@ -76,6 +86,16 @@ TEMPLATES: Dict[str, Iso20022Template] = {
       <Purp>
         <Cd>OTHR</Cd>
       </Purp>
+      <RgltryRptg>
+        <DbtCdtRptgInd>BOTH</DbtCdtRptgInd>
+        <Authrty>
+          <Nm>NEXUS</Nm>
+        </Authrty>
+        <Dtls>
+          <Cd>QREF</Cd>
+          <Inf>sample-quote-id</Inf>
+        </Dtls>
+      </RgltryRptg>
     </CdtTrfTxInf>
   </FIToFICstmrCdtTrf>
 </Document>"""
@@ -92,7 +112,9 @@ TEMPLATES: Dict[str, Iso20022Template] = {
       <CreDtTm>2026-02-04T18:00:05Z</CreDtTm>
     </GrpHdr>
     <TxInfAndSts>
-      <OrgnlMsgId>MSG20260204-001</OrgnlMsgId>
+      <OrgnlInstrId>INSTR-001</OrgnlInstrId>
+      <OrgnlEndToEndId>E2E-001</OrgnlEndToEndId>
+      <OrgnlTxId>TX-001</OrgnlTxId>
       <OrgnlUETR>91398cbd-0838-453f-b2c7-536e829f2b8e</OrgnlUETR>
       <TxSts>ACCC</TxSts>
     </TxInfAndSts>
@@ -111,7 +133,7 @@ TEMPLATES: Dict[str, Iso20022Template] = {
       <CreDtTm>2026-02-04T18:00:05Z</CreDtTm>
     </GrpHdr>
     <TxInfAndSts>
-      <OrgnlMsgId>MSG20260204-001</OrgnlMsgId>
+      <OrgnlEndToEndId>E2E-001</OrgnlEndToEndId>
       <OrgnlUETR>91398cbd-0838-453f-b2c7-536e829f2b8e</OrgnlUETR>
       <TxSts>RJCT</TxSts>
       <StsRsnInf>
@@ -168,7 +190,7 @@ TEMPLATES: Dict[str, Iso20022Template] = {
       <DbtrAcct>
         <Id><Othr><Id>FX-ACCT-777</Id></Othr></Id>
       </DbtrAcct>
-      <DbtrAgt><FinInstnId><BICFI>SAPSSSGSG</BICFI></FinInstnId></DbtrAgt>
+      <DbtrAgt><FinInstnId><BICFI>OCBCSGSG</BICFI></FinInstnId></DbtrAgt>
       <CdtTrfTxInf>
         <PmtId><EndToEndId>E2E-01</EndToEndId></PmtId>
         <Amt><InstdAmt Ccy="THB">25000.00</InstdAmt></Amt>
@@ -188,16 +210,26 @@ TEMPLATES: Dict[str, Iso20022Template] = {
         sample_xml="""<?xml version="1.0" encoding="UTF-8"?>
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.056.001.11">
   <FIToFIPmtCxlReq>
-    <GrpHdr>
-      <MsgId>RCL20260204-01</MsgId>
+    <Assgnmt>
+      <Id>RCL20260204-01</Id>
+      <Assgnr>
+        <Pty>
+          <Nm>Source PSP</Nm>
+        </Pty>
+      </Assgnr>
+      <Assgne>
+        <Pty>
+          <Nm>Nexus Gateway</Nm>
+        </Pty>
+      </Assgne>
       <CreDtTm>2026-02-04T19:00:00Z</CreDtTm>
-    </GrpHdr>
-    <Underlyg>
+    </Assgnmt>
+    <Undrlyg>
       <TxInf>
         <OrgnlUETR>91398cbd-0838-453f-b2c7-536e829f2b8e</OrgnlUETR>
         <CxlRsnInf><Rsn><Cd>DUPL</Cd></Rsn></CxlRsnInf>
       </TxInf>
-    </Underlyg>
+    </Undrlyg>
   </FIToFIPmtCxlReq>
 </Document>"""
     )

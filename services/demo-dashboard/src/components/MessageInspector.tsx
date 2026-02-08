@@ -91,23 +91,35 @@ const MESSAGE_METADATA: Record<string, {
         color: "teal",
         description: "SAP reservation request — locks FXP nostro funds (Method 2a)",
     },
-    "camt.104": {
-        displayName: "Create Reservation Response",
-        step: 11,
-        color: "teal",
-        description: "SAP reservation confirmation — funds locked",
-    },
     "camt.056": {
         displayName: "FI to FI Payment Cancellation Request",
         step: 0,
         color: "orange",
         description: "Recall request for funds recovery",
     },
+    "camt.029": {
+        displayName: "Resolution of Investigation",
+        step: 0,
+        color: "pink",
+        description: "Recall response - positive or negative",
+    },
     "pacs.004": {
         displayName: "Payment Return",
         step: 0,
         color: "red",
         description: "Return of funds to sender",
+    },
+    "pacs.028": {
+        displayName: "Payment Status Request",
+        step: 0,
+        color: "indigo",
+        description: "Status enquiry for a payment",
+    },
+    "pain.001": {
+        displayName: "Customer Credit Transfer Initiation",
+        step: 0,
+        color: "lime",
+        description: "Payment initiation from customer to PSP",
     },
 };
 

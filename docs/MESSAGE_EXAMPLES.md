@@ -44,7 +44,11 @@ This document provides concrete XML examples for all 11 ISO 20022 message types 
         <UETR>91398cbd-0838-453f-b2c7-536e829f2b8e</UETR>
       </PmtId>
       <IntrBkSttlmAmt Ccy="SGD">1000.00</IntrBkSttlmAmt>
-      <AccptncDtTm>2026-02-04T18:00:00Z</AccptncDtTm>
+      <IntrBkSttlmDt>2026-02-04</IntrBkSttlmDt>
+      <AddtlDtTm>
+        <AccptncDtTm>2026-02-04T18:00:00Z</AccptncDtTm>
+      </AddtlDtTm>
+      <InstdAmt Ccy="THB">1345.00</InstdAmt>
       <XchgRate>1.345</XchgRate>
       <ChrgBr>SHAR</ChrgBr>
       <InstgAgt>
@@ -59,6 +63,12 @@ This document provides concrete XML examples for all 11 ISO 20022 message types 
       <DbtrAcct>
         <Id><Othr><Id>1234567890</Id></Othr></Id>
       </DbtrAcct>
+      <DbtrAgt>
+        <FinInstnId><BICFI>DBSSSGSG</BICFI></FinInstnId>
+      </DbtrAgt>
+      <CdtrAgt>
+        <FinInstnId><BICFI>KASITHBK</BICFI></FinInstnId>
+      </CdtrAgt>
       <Cdtr>
         <Nm>Jane Smith</Nm>
       </Cdtr>

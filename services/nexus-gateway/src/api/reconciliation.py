@@ -4,7 +4,7 @@ Bank to Customer Debit/Credit Notification (camt.054) for Reconciliation
 Reference: NotebookLM query 2026-02-03
 
 Purpose: Allows IPS Operators to reconcile transactions with Nexus
-Version: camt.054.001.11
+Version: camt.054.001.13
 Frequency: Daily (configurable) or on-demand via API
 Content: All transactions with final status (ACCC, BLCK, RJCT) in period
 """
@@ -37,7 +37,7 @@ from .schemas import TransactionEntry, TransactionSummary, Camt054Response
     description="""
     **IPS Reconciliation Report**
     
-    Generates a camt.054.001.11 Bank to Customer Debit/Credit Notification
+    Generates a camt.054.001.13 Bank to Customer Debit/Credit Notification
     for an IPS Operator to reconcile their transactions with Nexus.
     
     ## Report Contents (NotebookLM confirmed)

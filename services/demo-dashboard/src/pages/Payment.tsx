@@ -576,6 +576,8 @@ export function PaymentPage() {
                 intermediaryAgent1Bic: intermediaries?.intermediaryAgent1?.bic,
                 intermediaryAgent2Bic: intermediaries?.intermediaryAgent2?.bic,
                 paymentReference: paymentReference || undefined,
+                // Proxy resolution correlation ID - links acmt.023/acmt.024 to payment
+                correlationId: resolution?.resolutionId,
                 scenarioCode: demoCode || undefined
             };
 
@@ -1071,7 +1073,9 @@ export function PaymentPage() {
                                     <Code block style={{ fontSize: '0.85rem', wordBreak: 'break-all' }}>{uetr}</Code>
                                     <Button
                                         component="a"
-                                        href={`/explorer?uetr=${uetr}`}
+                                        href={resolution?.resolutionId 
+                                            ? `/explorer?uetr=${uetr}&correlation_id=${resolution.resolutionId}`
+                                            : `/explorer?uetr=${uetr}`}
                                         variant="light"
                                         size="xs"
                                         leftSection={<IconInfoCircle size={14} />}
